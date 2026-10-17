@@ -94,7 +94,6 @@ export interface PartyEventItem {
   description: string;
   image: string;
   holoPreset?:
-    | "none"
     | "bursts"
     | "stars"
     | "shards"

@@ -1488,8 +1488,8 @@ export default function WorksWheelDemo() {
                   draggable={false}
                   tilt={!isCardFlipped}
                   tiltMax={12}
-                  glare={activeEvent.holoPreset === "none" ? false : true}
-                  glareOpacity={activeEvent.holoPreset === "none" ? 0 : 0.24}
+                  glare={true}
+                  glareOpacity={0.24}
                   width={flipWidth}
                   height={flipHeight}
                   radius={22}
@@ -1504,9 +1504,9 @@ export default function WorksWheelDemo() {
                         image={activeEvent.image}
                         alt={activeEvent.title}
                         preset={activeEvent.holoPreset || "bursts"}
-                        intensity={activeEvent.holoPreset === "none" ? 0 : 0.9}
-                        edgeSparkle={activeEvent.holoPreset === "none" ? 0 : 0.85}
-                        glare={activeEvent.holoPreset === "none" ? 0 : 0.55}
+                        intensity={0.9}
+                        edgeSparkle={0.85}
+                        glare={0.55}
                         idle={true}
                         width={holoWidth}
                         radius={16}
@@ -1735,7 +1735,6 @@ export default function WorksWheelDemo() {
                       }
                       className="w-full rounded-xl border border-white/15 bg-black/80 px-3 py-2 text-white"
                     >
-                      <option value="none">✨ No Shine (Matte Artwork)</option>
                       {[
                         "bursts",
                         "stars",
@@ -2382,7 +2381,7 @@ create policy "Allow all access to party_state" on party_state for all using (tr
                             <div className="flex items-center justify-between w-full text-[9px] uppercase font-bold text-zinc-400">
                               <span>Front Holo</span>
                               <span className="text-amber-300 font-mono">
-                                {card.holoPreset === "none" ? "matte" : (card.holoPreset || "bursts")}
+                                {card.holoPreset || "bursts"}
                               </span>
                             </div>
                             <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-white/15 bg-black/50 shadow-inner">
@@ -2505,7 +2504,6 @@ create policy "Allow all access to party_state" on party_state for all using (tr
                             }
                             className="w-full rounded-xl border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs text-amber-300 outline-none focus:border-amber-400"
                           >
-                            <option value="none">✨ No Shine (Matte Artwork)</option>
                             <option value="bursts">Foil: Bursts</option>
                             <option value="stars">Foil: Starlight</option>
                             <option value="shards">Foil: Crystal Shards</option>
