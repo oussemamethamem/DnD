@@ -38,6 +38,11 @@ import {
   Layers,
   RefreshCw,
   ExternalLink,
+  Crop,
+  Crosshair,
+  Grid,
+  List,
+  LayoutGrid,
 } from "lucide-react";
 
 const SESSION_CODE_KEY = "party_driftwall_access_code_v1";
@@ -117,6 +122,16 @@ export default function WorksWheelDemo() {
   const flipHeight = Math.round(flipWidth * (500 / 360));
   const holoWidth = flipWidth - 24;
 
+  // "Display All" View Mode: 'grid' (multi-card grid) or 'list' (detailed rows)
+  const [displayViewMode, setDisplayViewMode] = React.useState<"grid" | "list">("grid");
+
+  // Visual Image Cropping Tool State
+  const [cropModalOpen, setCropModalOpen] = React.useState(false);
+  const [croppingCardId, setCroppingCardId] = React.useState<string | null>(null);
+  const [cropX, setCropX] = React.useState<number>(50);
+  const [cropY, setCropY] = React.useState<number>(30);
+  const cropContainerRef = React.useRef<HTMLDivElement>(null);
+
   // Control Center (Batch Editor) State
   const [controlCenterOpen, setControlCenterOpen] = React.useState(false);
   const [batchEvents, setBatchEvents] = React.useState<PartyEventItem[]>([]);
@@ -154,6 +169,7 @@ export default function WorksWheelDemo() {
       description: "A newly recorded memory in the party's drifting archive.",
       image: `https://picsum.photos/seed/batch-${Date.now() % 1000}/700/900`,
       holoPreset: presets[nextNum % presets.length],
+      cropPosition: "50% 30%",
       reviews: [],
     };
     setBatchEvents((prev) => [newCard, ...prev]);
@@ -208,6 +224,58 @@ export default function WorksWheelDemo() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const croppingCard = React.useMemo(() => {
+    if (!croppingCardId) return null;
+    return (
+      batchEvents.find((c) => c.id === croppingCardId) ||
+      events.find((c) => c.id === croppingCardId) ||
+      (editingEvent?.id === croppingCardId
+        ? (editingEvent as PartyEventItem)
+        : null)
+    );
+  }, [croppingCardId, batchEvents, events, editingEvent]);
+
+  const handleOpenCropTool = (cardId: string) => {
+    const card =
+      batchEvents.find((c) => c.id === cardId) ||
+      events.find((c) => c.id === cardId) ||
+      (editingEvent?.id === cardId ? editingEvent : null);
+    if (!card) return;
+    setCroppingCardId(cardId);
+    if (card.cropPosition) {
+      const parts = card.cropPosition.split(" ");
+      if (parts.length === 2) {
+        const px = parseFloat(parts[0]);
+        const py = parseFloat(parts[1]);
+        if (!isNaN(px)) setCropX(px);
+        if (!isNaN(py)) setCropY(py);
+      }
+    } else {
+      setCropX(50);
+      setCropY(30);
+    }
+    setCropModalOpen(true);
+  };
+
+  const handleApplyCrop = () => {
+    if (!croppingCardId) return;
+    const formatted = `${Math.round(cropX)}% ${Math.round(cropY)}%`;
+    handleUpdateCardField(croppingCardId, "cropPosition", formatted);
+    if (editingEvent && editingEvent.id === croppingCardId) {
+      setEditingEvent((prev) => ({ ...prev, cropPosition: formatted }));
+    }
+    setCropModalOpen(false);
+  };
+
+  const handleCropPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!cropContainerRef.current) return;
+    const rect = cropContainerRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+    setCropX(Math.round(x));
+    setCropY(Math.round(y));
   };
 
   const handleSaveBatchEvents = async () => {
@@ -775,14 +843,18 @@ export default function WorksWheelDemo() {
 
         {/* Desktop Buttons */}
         <div className="pointer-events-auto hidden md:flex flex-wrap items-center gap-2">
-          {/* Prominent Control Center Button */}
+          {/* Prominent Display All Cards (Host Master Editor) Button */}
           <button
             type="button"
             onClick={handleOpenControlCenter}
-            className="flex cursor-pointer items-center gap-1.5 rounded-full border border-amber-400/70 bg-gradient-to-r from-amber-400/25 via-amber-300/20 to-amber-500/25 px-4 py-2 text-xs font-bold text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.25)] backdrop-blur-md transition hover:scale-105 hover:border-amber-300 hover:from-amber-400/35 hover:to-amber-500/35"
+            className="flex cursor-pointer items-center gap-2 rounded-full border border-amber-400/80 bg-gradient-to-r from-amber-400/30 via-amber-300/25 to-amber-500/30 px-4 py-2 text-xs font-black text-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.35)] backdrop-blur-md transition hover:scale-105 hover:border-amber-300 hover:from-amber-400/40 hover:to-amber-500/40"
+            title="Display All Cards: View and edit all cards simultaneously on one big screen"
           >
-            <SlidersHorizontal className="size-3.5" />
-            Control Center
+            <LayoutGrid className="size-4 text-amber-400" />
+            <span>Display All Cards</span>
+            <span className="rounded-full bg-amber-400/30 px-2 py-0.5 text-[10px] font-extrabold text-amber-200">
+              {events.length}
+            </span>
           </button>
 
           {character.role === "host" && (
@@ -796,6 +868,7 @@ export default function WorksWheelDemo() {
                     description: "",
                     image: "",
                     holoPreset: "bursts",
+                    cropPosition: "50% 30%",
                   });
                   setHostCardModalOpen(true);
                 }}
@@ -840,10 +913,10 @@ export default function WorksWheelDemo() {
           <button
             type="button"
             onClick={handleOpenControlCenter}
-            className="flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-400/20 px-3 py-1.5 text-xs font-bold text-amber-300 backdrop-blur-md"
+            className="flex items-center gap-1.5 rounded-full border border-amber-400/70 bg-amber-400/25 px-3 py-1.5 text-xs font-bold text-amber-300 backdrop-blur-md"
           >
-            <SlidersHorizontal className="size-3.5" />
-            <span>Control</span>
+            <LayoutGrid className="size-3.5" />
+            <span>Display All</span>
           </button>
 
           <button
@@ -1082,14 +1155,22 @@ export default function WorksWheelDemo() {
                           setEditingEvent(activeEvent);
                           setHostCardModalOpen(true);
                         }}
-                        className="flex cursor-pointer items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/20 px-3.5 py-1.5 text-xs font-bold text-amber-200"
+                        className="flex cursor-pointer items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/20 px-3.5 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-400/30 transition"
                       >
                         <Pencil className="size-3" /> Edit
                       </button>
                       <button
                         type="button"
+                        onClick={() => handleOpenCropTool(activeEvent.id)}
+                        className="flex cursor-pointer items-center gap-1 rounded-full border border-amber-400/70 bg-amber-400/25 px-3.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-400/35 transition"
+                        title="Adjust which part gets cropped on the back of this card"
+                      >
+                        <Crop className="size-3" /> Adjust Crop
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleHostDeleteEvent(activeEvent.id)}
-                        className="flex cursor-pointer items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/20 px-3 py-1.5 text-xs font-bold text-rose-200"
+                        className="flex cursor-pointer items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/20 px-3 py-1.5 text-xs font-bold text-rose-200 hover:bg-rose-500/30 transition"
                       >
                         <Trash2 className="size-3" />
                       </button>
@@ -1154,7 +1235,8 @@ export default function WorksWheelDemo() {
                         <img
                           src={activeEvent.image}
                           alt={activeEvent.title}
-                          className="size-full object-cover object-center"
+                          style={{ objectPosition: activeEvent.cropPosition || "50% 30%" }}
+                          className="size-full object-cover transition-[object-position] duration-300"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                         <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
@@ -1625,7 +1707,7 @@ export default function WorksWheelDemo() {
       </AnimatePresence>
 
       {/* =================================================================== */}
-      {/* ARCHIVE CONTROL CENTER: BATCH EDIT ALL CARDS & CREATE NEW CARDS      */}
+      {/* DISPLAY ALL CARDS: BATCH EDIT ALL CARDS & CREATE NEW CARDS          */}
       {/* =================================================================== */}
       <AnimatePresence>
         {controlCenterOpen && (
@@ -1635,23 +1717,23 @@ export default function WorksWheelDemo() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex flex-col bg-zinc-950/95 backdrop-blur-2xl text-white overflow-hidden"
           >
-            {/* Control Center Top Bar */}
-            <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-950/90 px-4 sm:px-8 py-3.5 backdrop-blur-xl">
+            {/* Display All Top Bar */}
+            <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-950/95 px-4 sm:px-8 py-3.5 backdrop-blur-xl">
               <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-2xl border border-amber-400/40 bg-amber-400/15 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.25)]">
-                  <SlidersHorizontal className="size-5" />
+                <div className="flex size-10 items-center justify-center rounded-2xl border border-amber-400/50 bg-amber-400/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]">
+                  <LayoutGrid className="size-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
-                      Archive Control Center
+                      Display All Cards — Host Master Editor
                     </h2>
                     <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-extrabold text-amber-300">
                       {batchEvents.length} Cards
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400 hidden sm:block">
-                    All cards present simultaneously — edit anywhere, reorder, create, and batch save.
+                    All cards present simultaneously in one big editable screen. Edit any field directly without having to zoom into individual cards.
                   </p>
                 </div>
               </div>
@@ -1663,13 +1745,43 @@ export default function WorksWheelDemo() {
                   type="text"
                   value={batchSearchQuery}
                   onChange={(e) => setBatchSearchQuery(e.target.value)}
-                  placeholder="Filter cards by title or era..."
-                  className="w-full rounded-full border border-white/15 bg-black/50 pl-8 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-amber-400 transition"
+                  placeholder="Filter cards by title, era, or lore..."
+                  className="w-full rounded-full border border-white/15 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-amber-400 transition"
                 />
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Buttons & View Mode Toggle */}
               <div className="flex items-center gap-2 order-2 sm:order-3 ml-auto sm:ml-0">
+                {/* View Mode Toggle: Grid vs List */}
+                <div className="flex items-center rounded-full border border-white/15 bg-black/50 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setDisplayViewMode("grid")}
+                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition ${
+                      displayViewMode === "grid"
+                        ? "bg-amber-400 text-zinc-950 shadow"
+                        : "text-zinc-400 hover:text-white"
+                    }`}
+                    title="Grid View (Multiple cards on screen)"
+                  >
+                    <Grid className="size-3.5" />
+                    <span className="hidden sm:inline">Grid</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDisplayViewMode("list")}
+                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition ${
+                      displayViewMode === "list"
+                        ? "bg-amber-400 text-zinc-950 shadow"
+                        : "text-zinc-400 hover:text-white"
+                    }`}
+                    title="List View (Full-width rows)"
+                  >
+                    <List className="size-3.5" />
+                    <span className="hidden sm:inline">List</span>
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={handleCreateCardInBatch}
@@ -1702,63 +1814,227 @@ export default function WorksWheelDemo() {
                   type="button"
                   onClick={() => setControlCenterOpen(false)}
                   className="flex size-8 items-center justify-center rounded-full border border-white/15 bg-zinc-900 text-zinc-300 hover:text-white hover:bg-zinc-800 transition"
-                  title="Close Control Center"
+                  title="Close Display All View"
                 >
                   <X className="size-4" />
                 </button>
               </div>
             </header>
 
-            {/* Scrollable Batch List */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-4">
-              {batchEvents
-                .map((card, originalIndex) => ({ card, originalIndex }))
-                .filter(({ card }) => {
-                  if (!batchSearchQuery.trim()) return true;
-                  const q = batchSearchQuery.toLowerCase();
-                  return (
-                    card.title.toLowerCase().includes(q) ||
-                    card.date.toLowerCase().includes(q) ||
-                    card.description.toLowerCase().includes(q)
-                  );
-                })
-                .map(({ card, originalIndex }) => (
-                  <div
-                    key={card.id}
-                    className="relative rounded-2xl border border-white/10 bg-zinc-900/60 p-4 sm:p-5 shadow-lg backdrop-blur-md transition hover:border-amber-400/40"
-                  >
-                    <div className="flex flex-col md:flex-row gap-5 items-start">
-                      {/* Left: Thumbnail & Holo Selector */}
-                      <div className="w-full md:w-44 shrink-0 flex flex-col items-center gap-2.5">
-                        <div className="relative aspect-[3/4] w-32 md:w-full overflow-hidden rounded-xl border border-white/15 bg-black/50 shadow-inner group">
-                          <img
-                            src={card.image}
-                            alt={card.title}
-                            className="size-full object-cover"
-                          />
-                          <div className="absolute top-2 right-2 rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-bold text-amber-300 uppercase backdrop-blur-sm">
-                            {card.holoPreset || "bursts"}
+            {/* Scrollable Batch Cards Area */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+              <div
+                className={
+                  displayViewMode === "grid"
+                    ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
+                    : "space-y-4"
+                }
+              >
+                {batchEvents
+                  .map((card, originalIndex) => ({ card, originalIndex }))
+                  .filter(({ card }) => {
+                    if (!batchSearchQuery.trim()) return true;
+                    const q = batchSearchQuery.toLowerCase();
+                    return (
+                      card.title.toLowerCase().includes(q) ||
+                      card.date.toLowerCase().includes(q) ||
+                      card.description.toLowerCase().includes(q)
+                    );
+                  })
+                  .map(({ card, originalIndex }) => (
+                    <div
+                      key={card.id}
+                      className="relative rounded-2xl border border-white/10 bg-zinc-900/70 p-4 sm:p-5 shadow-lg backdrop-blur-md transition hover:border-amber-400/50 flex flex-col justify-between"
+                    >
+                      <div className="space-y-3.5">
+                        {/* Card Header Row with Reorder & Actions */}
+                        <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="flex size-6 items-center justify-center rounded-md bg-amber-400/25 text-xs font-black text-amber-300">
+                              #{originalIndex + 1}
+                            </span>
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                disabled={originalIndex === 0}
+                                onClick={() =>
+                                  handleMoveCardInBatch(originalIndex, "up")
+                                }
+                                className="p-1 rounded text-zinc-400 hover:text-white disabled:opacity-25"
+                                title="Move Up on DriftWall"
+                              >
+                                <ChevronUp className="size-4" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={
+                                  originalIndex === batchEvents.length - 1
+                                }
+                                onClick={() =>
+                                  handleMoveCardInBatch(originalIndex, "down")
+                                }
+                                className="p-1 rounded text-zinc-400 hover:text-white disabled:opacity-25"
+                                title="Move Down on DriftWall"
+                              >
+                                <ChevronDown className="size-4" />
+                              </button>
+                            </div>
+                            {card.reviews && card.reviews.length > 0 && (
+                              <span className="ml-1 text-[10px] text-zinc-400">
+                                ★{" "}
+                                {(
+                                  card.reviews.reduce(
+                                    (a, b) => a + b.rating,
+                                    0
+                                  ) / card.reviews.length
+                                ).toFixed(1)}{" "}
+                                ({card.reviews.length})
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateCardInBatch(card)}
+                              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 hover:bg-white/10"
+                              title="Duplicate Card"
+                            >
+                              <Copy className="size-3" />
+                              <span className="hidden sm:inline">Duplicate</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeleteCardFromBatch(card.id)
+                              }
+                              className="flex items-center gap-1 rounded-lg border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-xs text-rose-300 hover:bg-rose-500/20"
+                              title="Delete Card"
+                            >
+                              <Trash2 className="size-3" />
+                              <span className="hidden sm:inline">Delete</span>
+                            </button>
                           </div>
                         </div>
 
-                        {/* Quick Photo Upload */}
-                        <label className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-zinc-800/80 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-700">
-                          <Upload className="size-3.5" />
-                          <span>Change Photo</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) =>
-                              handleBatchCardFileUpload(card.id, e)
-                            }
-                            className="hidden"
-                          />
-                        </label>
+                        {/* Dual Photo Showcase: Full Front Holo + Cropped Back Banner Preview */}
+                        <div className="grid grid-cols-2 gap-3 bg-black/40 p-2.5 rounded-xl border border-white/5">
+                          {/* Left: Full Front Portrait */}
+                          <div className="flex flex-col items-center gap-1.5">
+                            <div className="flex items-center justify-between w-full text-[9px] uppercase font-bold text-zinc-400">
+                              <span>Front Holo</span>
+                              <span className="text-amber-300 font-mono">
+                                {card.holoPreset || "bursts"}
+                              </span>
+                            </div>
+                            <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-white/15 bg-black/50 shadow-inner">
+                              <img
+                                src={card.image}
+                                alt={card.title}
+                                className="size-full object-cover"
+                              />
+                            </div>
+                            {/* Quick Photo Upload Button */}
+                            <label className="flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-white/10 bg-zinc-800/90 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-zinc-700 transition">
+                              <Upload className="size-3" />
+                              <span>Upload</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) =>
+                                  handleBatchCardFileUpload(card.id, e)
+                                }
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
 
-                        {/* Holo Foil Preset */}
-                        <div className="w-full">
+                          {/* Right: Cropped Back Banner Preview + Adjust Crop Tool */}
+                          <div className="flex flex-col items-center gap-1.5">
+                            <div className="flex items-center justify-between w-full text-[9px] uppercase font-bold text-amber-300">
+                              <span>Flipped Crop</span>
+                              <span className="text-zinc-400 font-mono">
+                                {card.cropPosition || "50% 30%"}
+                              </span>
+                            </div>
+                            <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-amber-400/40 bg-zinc-900 shadow-inner flex flex-col justify-between p-1.5">
+                              {/* Exact Cropped Slice Banner */}
+                              <div className="relative h-[55%] w-full overflow-hidden rounded border border-white/20">
+                                <img
+                                  src={card.image}
+                                  alt="Cropped banner"
+                                  style={{
+                                    objectPosition:
+                                      card.cropPosition || "50% 30%",
+                                  }}
+                                  className="size-full object-cover transition-all"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                              </div>
+
+                              {/* Story lore text slice */}
+                              <div className="text-[8px] italic leading-tight text-zinc-300 text-center line-clamp-3 px-1 my-auto">
+                                “{card.description || "Story description..."}”
+                              </div>
+                            </div>
+
+                            {/* Adjust Crop Tool Trigger */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCropTool(card.id)}
+                              className="flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-amber-400/50 bg-amber-400/15 py-1 text-[11px] font-bold text-amber-300 shadow hover:bg-amber-400/25 active:scale-98 transition"
+                              title="Open visual crop tool for this card"
+                            >
+                              <Crop className="size-3" />
+                              <span>Adjust Crop</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Form Inputs: Title & Date */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1">
+                              Card Title
+                            </label>
+                            <input
+                              type="text"
+                              value={card.title}
+                              onChange={(e) =>
+                                handleUpdateCardField(
+                                  card.id,
+                                  "title",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Card Title"
+                              className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-1.5 text-xs text-white font-bold outline-none focus:border-amber-400 transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1">
+                              Date / Era
+                            </label>
+                            <input
+                              type="text"
+                              value={card.date}
+                              onChange={(e) =>
+                                handleUpdateCardField(
+                                  card.id,
+                                  "date",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="e.g. Era 2024"
+                              className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-1.5 text-xs text-amber-300 font-mono outline-none focus:border-amber-400 transition"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Holo Foil Preset Selector */}
+                        <div>
                           <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1">
-                            Holo Foil Preset
+                            Holographic Foil Preset
                           </label>
                           <select
                             value={card.holoPreset || "bursts"}
@@ -1781,124 +2057,11 @@ export default function WorksWheelDemo() {
                             <option value="gold">Foil: Imperial Gold</option>
                           </select>
                         </div>
-                      </div>
-
-                      {/* Right: Card Inputs */}
-                      <div className="flex-1 w-full space-y-3">
-                        {/* Card Header Row with Reorder & Actions */}
-                        <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="flex size-6 items-center justify-center rounded-md bg-amber-400/20 text-xs font-bold text-amber-300">
-                              #{originalIndex + 1}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                disabled={originalIndex === 0}
-                                onClick={() =>
-                                  handleMoveCardInBatch(originalIndex, "up")
-                                }
-                                className="p-1 rounded text-zinc-400 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-400"
-                                title="Move Up in DriftWall"
-                              >
-                                <ChevronUp className="size-4" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={
-                                  originalIndex === batchEvents.length - 1
-                                }
-                                onClick={() =>
-                                  handleMoveCardInBatch(originalIndex, "down")
-                                }
-                                className="p-1 rounded text-zinc-400 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-400"
-                                title="Move Down in DriftWall"
-                              >
-                                <ChevronDown className="size-4" />
-                              </button>
-                            </div>
-                            {card.reviews && card.reviews.length > 0 && (
-                              <span className="ml-2 text-[10px] text-zinc-400">
-                                ★{" "}
-                                {(
-                                  card.reviews.reduce(
-                                    (a, b) => a + b.rating,
-                                    0
-                                  ) / card.reviews.length
-                                ).toFixed(1)}{" "}
-                                ({card.reviews.length} reviews)
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicateCardInBatch(card)}
-                              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/10"
-                              title="Duplicate Card"
-                            >
-                              <Copy className="size-3" />
-                              <span className="hidden sm:inline">Duplicate</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDeleteCardFromBatch(card.id)
-                              }
-                              className="flex items-center gap-1 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-500/20"
-                              title="Delete Card"
-                            >
-                              <Trash2 className="size-3" />
-                              <span className="hidden sm:inline">Delete</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Title & Date */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1">
-                              Card Title
-                            </label>
-                            <input
-                              type="text"
-                              value={card.title}
-                              onChange={(e) =>
-                                handleUpdateCardField(
-                                  card.id,
-                                  "title",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Card Title"
-                              className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-sm text-white font-bold outline-none focus:border-amber-400 transition"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1">
-                              Date / Era
-                            </label>
-                            <input
-                              type="text"
-                              value={card.date}
-                              onChange={(e) =>
-                                handleUpdateCardField(
-                                  card.id,
-                                  "date",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="e.g. Era 2024"
-                              className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-sm text-amber-300 font-mono outline-none focus:border-amber-400 transition"
-                            />
-                          </div>
-                        </div>
 
                         {/* Image URL Input */}
                         <div>
                           <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1">
-                            Image URL (Or click Change Photo on left)
+                            Image URL
                           </label>
                           <input
                             type="text"
@@ -1911,14 +2074,14 @@ export default function WorksWheelDemo() {
                               )
                             }
                             placeholder="https://..."
-                            className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-xs font-mono text-zinc-300 outline-none focus:border-amber-400 transition"
+                            className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-1.5 text-xs font-mono text-zinc-300 outline-none focus:border-amber-400 transition"
                           />
                         </div>
 
                         {/* Description / Story Lore */}
                         <div>
                           <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1">
-                            Quoted Story / Lore (Revealed When Flipped)
+                            Quoted Story / Lore (Shown Under Cropped Image)
                           </label>
                           <textarea
                             rows={3}
@@ -1936,8 +2099,8 @@ export default function WorksWheelDemo() {
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+              </div>
             </div>
 
             {/* Sticky Bottom Status & Action Bar */}
@@ -1997,6 +2160,221 @@ export default function WorksWheelDemo() {
       </AnimatePresence>
 
       {/* =================================================================== */}
+      {/* INTERACTIVE CROP TOOL MODAL                                         */}
+      {/* =================================================================== */}
+      <AnimatePresence>
+        {cropModalOpen && croppingCard && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-60 flex items-center justify-center bg-black/85 p-3 sm:p-6 backdrop-blur-md"
+            onClick={() => setCropModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-4xl rounded-3xl border border-amber-400/40 bg-zinc-950 p-5 sm:p-7 shadow-2xl space-y-5 text-white max-h-[92vh] overflow-y-auto"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-9 items-center justify-center rounded-xl bg-amber-400/20 text-amber-400">
+                    <Crop className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-white">
+                      Adjust Cropped View — {croppingCard.title}
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      Click or drag directly on the photo to choose which exact portion appears on the flipped back of this card.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCropModalOpen(false)}
+                  className="rounded-full bg-white/5 p-2 text-zinc-400 hover:text-white"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Main Workspace: Interactive Crop Photo + Real-Time Live Preview */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                {/* Left 7 cols: Interactive Crop Photo */}
+                <div className="md:col-span-7 space-y-3">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span className="font-semibold text-zinc-300">
+                      Click or drag inside the photo:
+                    </span>
+                    <span className="font-mono text-amber-300">
+                      Focus: X: {cropX}%, Y: {cropY}%
+                    </span>
+                  </div>
+
+                  {/* Interactive Crop Image Box */}
+                  <div
+                    ref={cropContainerRef}
+                    onPointerDown={handleCropPointer}
+                    onPointerMove={(e) => {
+                      if (e.buttons === 1) handleCropPointer(e);
+                    }}
+                    className="relative cursor-crosshair select-none touch-none aspect-[3/4] max-h-[360px] w-full overflow-hidden rounded-2xl border-2 border-white/20 bg-black shadow-inner"
+                  >
+                    <img
+                      src={croppingCard.image}
+                      alt="Crop target"
+                      className="size-full object-cover pointer-events-none"
+                    />
+
+                    {/* Dark Vignette Overlay outside the crop box */}
+                    <div className="pointer-events-none absolute inset-0 bg-black/40" />
+
+                    {/* Glowing Gold Crop Window (representing the ~2:1 back banner) */}
+                    <div
+                      style={{
+                        top: `${Math.max(0, Math.min(62, cropY - 19))}%`,
+                        left: `${Math.max(0, Math.min(20, cropX - 40))}%`,
+                        width: "80%",
+                        height: "38%",
+                      }}
+                      className="pointer-events-none absolute rounded-xl border-2 border-amber-400 bg-amber-400/15 shadow-[0_0_20px_rgba(251,191,36,0.6)] backdrop-brightness-110 flex items-center justify-center transition-all duration-75"
+                    >
+                      <Crosshair className="size-6 text-amber-300/80 animate-pulse" />
+                      <div className="absolute top-1 left-2 rounded bg-black/80 px-1.5 py-0.5 text-[9px] font-bold text-amber-300 uppercase">
+                        Back of Card Crop Frame
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Preset Buttons */}
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-zinc-400 block mb-1.5">
+                      Quick Focus Presets
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: "Faces / Top", y: 15, x: 50 },
+                        { label: "Upper Center", y: 30, x: 50 },
+                        { label: "Dead Center", y: 50, x: 50 },
+                        { label: "Lower Center", y: 70, x: 50 },
+                        { label: "Bottom", y: 85, x: 50 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            setCropX(preset.x);
+                            setCropY(preset.y);
+                          }}
+                          className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                            cropY === preset.y
+                              ? "bg-amber-400 text-zinc-950 font-bold shadow"
+                              : "border border-white/15 bg-white/5 text-zinc-300 hover:bg-white/10"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Fine-Tuning Vertical Slider */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex justify-between text-xs text-zinc-400">
+                      <span>Vertical Crop Position (Y):</span>
+                      <span className="font-mono text-amber-300">{cropY}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={cropY}
+                      onChange={(e) => setCropY(Number(e.target.value))}
+                      className="w-full accent-amber-400"
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-500">
+                      <span>0% (Top / Faces)</span>
+                      <span>50% (Center)</span>
+                      <span>100% (Bottom)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right 5 cols: Live Real-Time Card Back Preview */}
+                <div className="md:col-span-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span className="font-semibold text-zinc-300">
+                      Live Flipped Card Preview:
+                    </span>
+                    <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                      Exact Appearance
+                    </span>
+                  </div>
+
+                  {/* Miniature Card Back */}
+                  <div className="rounded-2xl border border-white/15 bg-zinc-900 p-4 shadow-xl text-left space-y-3">
+                    {/* Cropped Image Banner */}
+                    <div className="relative aspect-[2.1/1] w-full overflow-hidden rounded-xl border border-white/15 shadow-inner">
+                      <img
+                        src={croppingCard.image}
+                        alt="Preview"
+                        style={{ objectPosition: `${cropX}% ${cropY}%` }}
+                        className="size-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                      <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between">
+                        <span className="rounded-full bg-black/75 px-2 py-0.5 text-[9px] font-bold text-amber-300 uppercase">
+                          {croppingCard.date || "Era"}
+                        </span>
+                        <span className="text-xs font-bold text-white drop-shadow truncate max-w-[160px]">
+                          {croppingCard.title || "Card Title"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Quoted Story Paragraph */}
+                    <div className="py-2 text-center">
+                      <Quote className="mx-auto mb-1.5 size-4 text-amber-400/60" />
+                      <p className="text-xs italic leading-relaxed text-zinc-200 line-clamp-3">
+                        “{croppingCard.description || "A newly recorded memory in the party's archive."}”
+                      </p>
+                    </div>
+
+                    <div className="border-t border-white/10 pt-2 text-center text-[10px] text-zinc-500">
+                      This is the exact cropped portion your party guests will see when they flip the card.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 border-t border-white/10 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setCropModalOpen(false)}
+                  className="rounded-xl px-4 py-2 text-xs font-semibold text-zinc-400 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyCrop}
+                  className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 px-5 py-2 text-xs font-bold text-zinc-950 shadow-lg hover:scale-105 active:scale-95 transition"
+                >
+                  <CheckCircle2 className="size-4" />
+                  Apply & Keep Crop
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* =================================================================== */}
       {/* MOBILE NAVIGATION DRAWER                                            */}
       {/* =================================================================== */}
       <AnimatePresence>
@@ -2041,17 +2419,17 @@ export default function WorksWheelDemo() {
               </div>
 
               <div className="space-y-2 text-xs">
-                {/* Control Center */}
+                {/* Display All Cards */}
                 <button
                   type="button"
                   onClick={handleOpenControlCenter}
-                  className="w-full flex items-center gap-3 rounded-2xl border border-amber-400/40 bg-gradient-to-r from-amber-400/20 to-amber-500/20 p-3.5 font-bold text-amber-300 shadow-md text-left"
+                  className="w-full flex items-center gap-3 rounded-2xl border border-amber-400/50 bg-gradient-to-r from-amber-400/25 to-amber-500/25 p-3.5 font-bold text-amber-300 shadow-md text-left"
                 >
-                  <SlidersHorizontal className="size-5 shrink-0" />
+                  <LayoutGrid className="size-5 shrink-0 text-amber-400" />
                   <div>
-                    <div className="font-bold text-sm">Control Center</div>
+                    <div className="font-bold text-sm">Display All Cards (Master Editor)</div>
                     <div className="text-[11px] text-amber-200/70 font-normal">
-                      Batch edit all cards, reorder & create
+                      Display and edit all cards on one big screen without zooming
                     </div>
                   </div>
                 </button>

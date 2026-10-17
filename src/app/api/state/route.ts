@@ -90,6 +90,7 @@ export interface PartyEventItem {
     | "swirl"
     | "glitter"
     | "gold";
+  cropPosition?: string; // e.g. "50% 30%" for custom focal crop on flipped back banner
   reviews: ReviewEntry[];
 }
 
@@ -310,6 +311,10 @@ export async function POST(req: Request) {
           image: eventData.image,
           holoPreset:
             eventData.holoPreset || state.events[existingIdx].holoPreset,
+          cropPosition:
+            eventData.cropPosition ||
+            state.events[existingIdx].cropPosition ||
+            "50% 30%",
         };
       } else {
         const nextNum = state.events.length + 1;
@@ -324,6 +329,7 @@ export async function POST(req: Request) {
             eventData.image ||
             `https://picsum.photos/seed/drift-card-${nextNum}/700/900`,
           holoPreset: eventData.holoPreset || "bursts",
+          cropPosition: eventData.cropPosition || "50% 30%",
           reviews: [],
         });
       }
@@ -360,7 +366,7 @@ export async function POST(req: Request) {
       return NextResponse.json(state);
     }
 
-    // 5. HOST-ONLY: BATCH SAVE/REPLACE ALL EVENTS FROM CONTROL CENTER
+    // 5. HOST-ONLY: BATCH SAVE/REPLACE ALL EVENTS FROM CONTROL CENTER / DISPLAY ALL
     if (action === "HOST_BATCH_UPDATE_EVENTS") {
       if (character.role !== "host") {
         return NextResponse.json(
@@ -382,6 +388,7 @@ export async function POST(req: Request) {
               String(e.image || "").trim() ||
               `https://picsum.photos/seed/drift-card-${idx + 1}/700/900`,
             holoPreset: e.holoPreset || "bursts",
+            cropPosition: e.cropPosition || existing?.cropPosition || "50% 30%",
             reviews: Array.isArray(e.reviews)
               ? e.reviews
               : existing?.reviews || [],
