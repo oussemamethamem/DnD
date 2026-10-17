@@ -43,6 +43,7 @@ import {
   Grid,
   List,
   LayoutGrid,
+  Download,
 } from "lucide-react";
 
 const SESSION_CODE_KEY = "party_driftwall_access_code_v1";
@@ -62,6 +63,46 @@ export const CHARACTER_CURSOR_THEMES: Record<
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+// Client-side automatic image optimizer: downscales large photos and compresses to ~120-180KB
+function compressImage(
+  file: File,
+  maxWidth = 1200,
+  maxHeight = 1600,
+  quality = 0.82
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve(dataUrl);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function WorksWheelDemo() {
@@ -134,6 +175,17 @@ export default function WorksWheelDemo() {
   const [newPlayerName, setNewPlayerName] = React.useState("");
   const [newPlayerCode, setNewPlayerCode] = React.useState("");
   const [newPlayerTitle, setNewPlayerTitle] = React.useState("");
+
+  // Persistence, Error & Cloud Sync State
+  const [storageInfo, setStorageInfo] = React.useState<{
+    isSupabaseConfigured: boolean;
+    storageType: string;
+    previewUrl?: string | null;
+  }>({ isSupabaseConfigured: false, storageType: "ephemeral" });
+  const [hasLocalEditsBackup, setHasLocalEditsBackup] = React.useState(false);
+  const [hostCardError, setHostCardError] = React.useState("");
+  const [imageUploadStatus, setImageUploadStatus] = React.useState("");
+  const [hostDbStatus, setHostDbStatus] = React.useState("");
 
   const [editingEvent, setEditingEvent] = React.useState<
     Partial<PartyEventItem>
@@ -260,19 +312,18 @@ export default function WorksWheelDemo() {
     );
   };
 
-  const handleBatchCardFileUpload = (
+  const handleBatchCardFileUpload = async (
     cardId: string,
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === "string") {
-        handleUpdateCardField(cardId, "image", reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file);
+      handleUpdateCardField(cardId, "image", compressed);
+    } catch (err) {
+      console.error("Error compressing card photo:", err);
+    }
   };
 
   const croppingCard = React.useMemo(() => {
@@ -345,22 +396,128 @@ export default function WorksWheelDemo() {
           eventsData: batchEvents,
         }),
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Server returned error (${res.status})`);
+      }
+
       if (!res.ok) {
         setBatchSaveStatus("error");
         setBatchSaveMessage(data.error || "Failed to batch save cards.");
       } else {
         setEvents(data.events);
         setBatchEvents(data.events);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(
+              "party_driftwall_cached_events",
+              JSON.stringify(data.events)
+            );
+          } catch (e) {}
+        }
+        if (data.storageInfo) setStorageInfo(data.storageInfo);
         setBatchSaveStatus("saved");
         setBatchSaveMessage(
           `Successfully saved all ${data.events.length} cards to database!`
         );
         setTimeout(() => setBatchSaveStatus("idle"), 3500);
       }
-    } catch {
+    } catch (err: any) {
       setBatchSaveStatus("error");
-      setBatchSaveMessage("Network error while batch saving.");
+      setBatchSaveMessage(err.message || "Network error while batch saving.");
+    }
+  };
+
+  const handleRestoreLocalEdits = async () => {
+    try {
+      const cached = localStorage.getItem("party_driftwall_cached_events");
+      if (!cached) return;
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setEvents(parsed);
+        setHasLocalEditsBackup(false);
+        if (character && character.role === "host") {
+          await fetch("/api/state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "HOST_BATCH_UPDATE_EVENTS",
+              code: accessCode,
+              eventsData: parsed,
+            }),
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to restore local edits:", e);
+    }
+  };
+
+  const handleDownloadBackup = () => {
+    const backupData = {
+      timestamp: new Date().toISOString(),
+      events,
+      roster,
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `party-driftwall-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setHostDbStatus("Downloaded database backup JSON successfully!");
+    setTimeout(() => setHostDbStatus(""), 4000);
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed.events || !Array.isArray(parsed.events)) {
+        setHostDbStatus("Invalid backup file: missing 'events' array.");
+        return;
+      }
+      setSubmitting(true);
+      const res = await fetch("/api/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "HOST_IMPORT_DATA",
+          code: accessCode,
+          importedState: parsed,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.events) {
+        setEvents(data.events);
+        if (data.roster) setRoster(data.roster);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(
+              "party_driftwall_cached_events",
+              JSON.stringify(data.events)
+            );
+          } catch (e) {}
+        }
+        setHostDbStatus(`Restored ${data.events.length} cards from backup!`);
+      } else {
+        setHostDbStatus(data.error || "Failed to restore backup.");
+      }
+    } catch (err: any) {
+      setHostDbStatus(`Import error: ${err.message}`);
+    } finally {
+      setSubmitting(false);
+      setTimeout(() => setHostDbStatus(""), 5000);
     }
   };
 
@@ -368,7 +525,23 @@ export default function WorksWheelDemo() {
     try {
       const res = await fetch("/api/state", { cache: "no-store" });
       const data = await res.json();
-      if (Array.isArray(data.events)) setEvents(data.events);
+      if (data.storageInfo) setStorageInfo(data.storageInfo);
+      if (Array.isArray(data.events)) {
+        setEvents(data.events);
+        try {
+          const cached = localStorage.getItem("party_driftwall_cached_events");
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (
+              Array.isArray(parsed) &&
+              parsed.length > 0 &&
+              JSON.stringify(parsed) !== JSON.stringify(data.events)
+            ) {
+              setHasLocalEditsBackup(true);
+            }
+          }
+        } catch (e) {}
+      }
       if (Array.isArray(data.roster)) {
         setRoster(data.roster);
         const savedCode = localStorage.getItem(SESSION_CODE_KEY);
@@ -502,6 +675,7 @@ export default function WorksWheelDemo() {
     e.preventDefault();
     if (!character || character.role !== "host") return;
     setSubmitting(true);
+    setHostCardError("");
     try {
       const res = await fetch("/api/state", {
         method: "POST",
@@ -512,11 +686,38 @@ export default function WorksWheelDemo() {
           eventData: editingEvent,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.events) {
-        setEvents(data.events);
-        setHostCardModalOpen(false);
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Server returned error (${res.status})`);
       }
+
+      if (!res.ok) {
+        setHostCardError(
+          data.error ||
+            `Failed to save (${res.status}). If using a very large image, try uploading a smaller file.`
+        );
+        return;
+      }
+
+      if (data.events) {
+        setEvents(data.events);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(
+              "party_driftwall_cached_events",
+              JSON.stringify(data.events)
+            );
+          } catch (e) {}
+        }
+        if (data.storageInfo) setStorageInfo(data.storageInfo);
+        setHostCardModalOpen(false);
+        setImageUploadStatus("");
+      }
+    } catch (err: any) {
+      setHostCardError(err.message || "Network error while saving card.");
     } finally {
       setSubmitting(false);
     }
@@ -536,6 +737,14 @@ export default function WorksWheelDemo() {
     const data = await res.json();
     if (res.ok && data.events) {
       setEvents(data.events);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            "party_driftwall_cached_events",
+            JSON.stringify(data.events)
+          );
+        } catch (e) {}
+      }
       setActiveEventId(null);
     }
   };
@@ -583,19 +792,23 @@ export default function WorksWheelDemo() {
     setNewPlayerCode("");
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === "string") {
-        setEditingEvent((prev) => ({
-          ...prev,
-          image: reader.result as string,
-        }));
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      setImageUploadStatus("Optimizing photo from desktop...");
+      const compressed = await compressImage(file);
+      setEditingEvent((prev) => ({
+        ...prev,
+        image: compressed,
+      }));
+      const sizeKb = Math.round(compressed.length / 1024);
+      setImageUploadStatus(`Photo ready & optimized (~${sizeKb} KB)`);
+      setHostCardError("");
+    } catch (err) {
+      console.error("Failed to process image:", err);
+      setImageUploadStatus("Could not process image file.");
+    }
   };
 
   // =========================================================================
@@ -878,6 +1091,28 @@ export default function WorksWheelDemo() {
         />
       </div>
 
+      {/* Offline Edits Recovery Notification Pill */}
+      {hasLocalEditsBackup && character?.role === "host" && (
+        <div className="pointer-events-auto fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-2xl border border-amber-400/60 bg-zinc-900/95 px-4 py-2.5 text-xs text-amber-200 shadow-2xl backdrop-blur-xl">
+          <Sparkles className="size-4 text-amber-400 shrink-0" />
+          <span>Found previous card edits saved in this browser.</span>
+          <button
+            type="button"
+            onClick={handleRestoreLocalEdits}
+            className="rounded-lg bg-amber-400 px-3 py-1 font-bold text-zinc-950 hover:bg-amber-300 transition"
+          >
+            Restore to DriftWall
+          </button>
+          <button
+            type="button"
+            onClick={() => setHasLocalEditsBackup(false)}
+            className="text-zinc-400 hover:text-white"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Navigation & Host Admin Bar */}
       <header className="pointer-events-none fixed top-0 right-0 left-0 z-30 flex items-center justify-between gap-2 px-3.5 py-3 sm:px-6 sm:py-4">
         {/* User Character Pill */}
@@ -949,10 +1184,19 @@ export default function WorksWheelDemo() {
               <button
                 type="button"
                 onClick={() => setHostDbModalOpen(true)}
-                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-sky-400/40 bg-zinc-900/90 px-3.5 py-2 text-xs font-semibold text-sky-300 backdrop-blur-md transition hover:bg-zinc-800"
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-semibold backdrop-blur-md transition ${
+                  storageInfo.isSupabaseConfigured
+                    ? "border-emerald-500/40 bg-zinc-900/90 text-emerald-300 hover:bg-zinc-800"
+                    : "border-sky-400/40 bg-zinc-900/90 text-sky-300 hover:bg-zinc-800"
+                }`}
               >
                 <Database className="size-3.5" />
-                Ratings Database
+                Ratings & Database
+                {storageInfo.isSupabaseConfigured ? (
+                  <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" title="Supabase Cloud Synced" />
+                ) : (
+                  <span className="size-2 rounded-full bg-amber-400 animate-pulse" title="Ephemeral Storage" />
+                )}
               </button>
             </>
           )}
@@ -1532,30 +1776,72 @@ export default function WorksWheelDemo() {
                     type="text"
                     placeholder="https://..."
                     value={editingEvent.image || ""}
-                    onChange={(e) =>
-                      setEditingEvent((p) => ({ ...p, image: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setEditingEvent((p) => ({ ...p, image: e.target.value }));
+                      setHostCardError("");
+                    }}
                     className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-white"
                   />
                 </div>
 
                 <div>
                   <label className="mb-1 flex items-center gap-1.5 text-zinc-300">
-                    <Upload className="size-3.5" /> Or Upload Photo From Desktop
+                    <Upload className="size-3.5" /> Or Upload Photo From Desktop (Auto-Optimized)
                   </label>
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleFileUpload}
-                    className="w-full text-xs text-zinc-400"
+                    className="w-full text-xs text-zinc-400 file:mr-3 file:py-1 file:px-3 file:rounded-xl file:border-0 file:bg-amber-400 file:text-zinc-950 file:font-bold file:cursor-pointer hover:file:bg-amber-300"
                   />
+                  {imageUploadStatus && (
+                    <p className="mt-1.5 text-xs text-amber-300 font-semibold">{imageUploadStatus}</p>
+                  )}
+                  {editingEvent.image && (
+                    <div className="mt-2.5 flex items-center gap-3 rounded-xl border border-white/10 bg-black/50 p-2.5">
+                      <img
+                        src={editingEvent.image}
+                        alt="Preview"
+                        className="size-12 rounded-lg object-cover border border-white/20 shrink-0"
+                      />
+                      <div className="flex-1 overflow-hidden">
+                        <p className="text-xs font-bold text-white truncate">Image Attached</p>
+                        <p className="text-[10px] text-zinc-400 truncate">
+                          {editingEvent.image.startsWith("data:")
+                            ? "Desktop Photo (Optimized & Ready to Save)"
+                            : editingEvent.image}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingEvent((p) => ({ ...p, image: "" }));
+                          setImageUploadStatus("");
+                        }}
+                        className="rounded-lg bg-white/10 px-2.5 py-1 text-xs text-zinc-300 hover:text-white"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {hostCardError && (
+                  <div className="flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/15 p-3 text-xs text-rose-300">
+                    <AlertCircle className="size-4 shrink-0 text-rose-400" />
+                    <span>{hostCardError}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setHostCardModalOpen(false)}
+                  onClick={() => {
+                    setHostCardModalOpen(false);
+                    setHostCardError("");
+                    setImageUploadStatus("");
+                  }}
                   className="rounded-xl px-4 py-2 text-xs text-zinc-400 hover:bg-white/5"
                 >
                   Cancel
@@ -1563,9 +1849,9 @@ export default function WorksWheelDemo() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="cursor-pointer rounded-xl bg-amber-400 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300"
+                  className="cursor-pointer rounded-xl bg-amber-400 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300 disabled:opacity-50"
                 >
-                  Save to DriftWall
+                  {submitting ? "Saving to Database..." : "Save to DriftWall"}
                 </button>
               </div>
             </motion.form>
@@ -1740,7 +2026,7 @@ export default function WorksWheelDemo() {
                     Website Ratings & Comments Database
                   </h2>
                   <p className="text-xs text-zinc-400">
-                    Complete overview of what every guest rated and commented.
+                    Complete overview of storage persistence, reviews, and database backups.
                   </p>
                 </div>
                 <button
@@ -1750,6 +2036,87 @@ export default function WorksWheelDemo() {
                 >
                   <X className="size-4" />
                 </button>
+              </div>
+
+              {/* Storage Status & Backup Tools */}
+              <div className="space-y-3">
+                {storageInfo.isSupabaseConfigured ? (
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+                      <div>
+                        <span className="font-bold">Permanent Cloud Database Connected:</span> Supabase is active. All cards, images, and reviews are permanently preserved.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="size-4 shrink-0 text-amber-400 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-bold text-amber-300">Notice: Running in Ephemeral Vercel Storage</p>
+                        <p className="text-zinc-300 mt-0.5 text-[11px] leading-relaxed">
+                          Vercel serverless containers restart automatically when idle or redeployed. To keep your cards, images, and ratings permanently saved across days, link your Supabase database in Vercel Environment Variables.
+                        </p>
+                      </div>
+                    </div>
+                    <details className="mt-2 text-[11px] text-zinc-300 bg-black/40 rounded-xl p-2.5 border border-white/10">
+                      <summary className="font-bold text-amber-300 cursor-pointer select-none">
+                        Click here for 2-minute Supabase Setup Instructions
+                      </summary>
+                      <div className="mt-2 space-y-2 text-zinc-300 font-mono text-[10px]">
+                        <p>1. Open your Supabase Dashboard and click <strong>"Connect"</strong> at the top.</p>
+                        <p>2. Copy your <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.</p>
+                        <p>3. In Vercel &rarr; Project Settings &rarr; Environment Variables, add both keys.</p>
+                        <p>4. In Supabase SQL Editor, run this one-time query:</p>
+                        <pre className="bg-black/60 p-2 rounded text-emerald-300 overflow-x-auto text-[9px]">
+{`create table if not exists party_state (
+  id text primary key,
+  payload jsonb not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table party_state enable row level security;
+create policy "Allow all access to party_state" on party_state for all using (true) with check (true);`}
+                        </pre>
+                      </div>
+                    </details>
+                  </div>
+                )}
+
+                {/* Backup & Restore Action Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/30 p-2.5">
+                  <div className="text-[11px] text-zinc-400">
+                    Database snapshot: <strong>{events.length} cards</strong>, <strong>{roster.length} characters</strong>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadBackup}
+                      className="flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-400/20 transition"
+                      title="Download complete JSON database backup to your desktop"
+                    >
+                      <Download className="size-3.5" />
+                      <span>Download Backup JSON</span>
+                    </button>
+                    <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-sky-400/40 bg-sky-400/10 px-3 py-1.5 text-xs font-bold text-sky-300 hover:bg-sky-400/20 transition">
+                      <Upload className="size-3.5" />
+                      <span>Restore Backup JSON</span>
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportBackup}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {hostDbStatus && (
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-200">
+                    <CheckCircle2 className="size-3.5 text-amber-400 shrink-0" />
+                    <span>{hostDbStatus}</span>
+                  </div>
+                )}
               </div>
 
               <div className="max-h-96 space-y-3 overflow-y-auto pr-1 text-xs">

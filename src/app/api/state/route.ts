@@ -136,6 +136,19 @@ const INITIAL_EVENTS: PartyEventItem[] = PICSUM_IDS.map((picId, i) => {
 
 const DATA_FILE = path.join(process.cwd(), "data", "party-driftwall-db.json");
 
+export function getStorageInfo() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const isSupabaseConfigured = Boolean(url && key);
+  return {
+    isSupabaseConfigured,
+    storageType: isSupabaseConfigured ? "supabase" : "ephemeral",
+    previewUrl: url ? url.replace(/^(https?:\/\/[^.]+).*/, "$1...") : null,
+  };
+}
+
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
@@ -153,38 +166,69 @@ async function readDB(): Promise<DatabaseState> {
 
   const supabase = getSupabase();
   if (supabase) {
-    const { data, error } = await supabase
-      .from("party_state")
-      .select("payload")
-      .eq("id", "driftwall_v1")
-      .single();
-    if (!error && data?.payload) return data.payload as DatabaseState;
-
-    let seedData = fallback;
     try {
-      if (fs.existsSync(DATA_FILE)) {
-        const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
-        seedData = {
-          roster: Array.isArray(raw.roster) && raw.roster.length ? raw.roster : DEFAULT_ROSTER,
-          events: Array.isArray(raw.events) && raw.events.length ? raw.events : INITIAL_EVENTS,
+      const { data, error } = await supabase
+        .from("party_state")
+        .select("payload")
+        .eq("id", "driftwall_v1")
+        .single();
+      if (!error && data?.payload) {
+        const payload = data.payload as DatabaseState;
+        return {
+          roster:
+            Array.isArray(payload.roster) && payload.roster.length
+              ? payload.roster
+              : DEFAULT_ROSTER,
+          events:
+            Array.isArray(payload.events) && payload.events.length
+              ? payload.events
+              : INITIAL_EVENTS,
         };
       }
-    } catch (e) {
-      console.warn("Could not read local DB file for seeding, using fallback defaults:", e);
-    }
 
-    await supabase
-      .from("party_state")
-      .upsert({ id: "driftwall_v1", payload: seedData });
-    return seedData;
+      let seedData = fallback;
+      try {
+        if (fs.existsSync(DATA_FILE)) {
+          const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+          seedData = {
+            roster:
+              Array.isArray(raw.roster) && raw.roster.length
+                ? raw.roster
+                : DEFAULT_ROSTER,
+            events:
+              Array.isArray(raw.events) && raw.events.length
+                ? raw.events
+                : INITIAL_EVENTS,
+          };
+        }
+      } catch (e) {
+        console.warn(
+          "Could not read local DB file for seeding, using fallback defaults:",
+          e
+        );
+      }
+
+      await supabase
+        .from("party_state")
+        .upsert({ id: "driftwall_v1", payload: seedData });
+      return seedData;
+    } catch (e) {
+      console.warn("Supabase read error, falling back to local file:", e);
+    }
   }
 
   try {
     if (fs.existsSync(DATA_FILE)) {
       const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
       return {
-        roster: Array.isArray(raw.roster) && raw.roster.length ? raw.roster : DEFAULT_ROSTER,
-        events: Array.isArray(raw.events) && raw.events.length ? raw.events : INITIAL_EVENTS,
+        roster:
+          Array.isArray(raw.roster) && raw.roster.length
+            ? raw.roster
+            : DEFAULT_ROSTER,
+        events:
+          Array.isArray(raw.events) && raw.events.length
+            ? raw.events
+            : INITIAL_EVENTS,
       };
     }
   } catch (e) {
@@ -196,9 +240,21 @@ async function readDB(): Promise<DatabaseState> {
 async function writeDB(state: DatabaseState) {
   const supabase = getSupabase();
   if (supabase) {
-    await supabase
+    const { error } = await supabase
       .from("party_state")
       .upsert({ id: "driftwall_v1", payload: state });
+    if (error) {
+      console.error("Supabase upsert error:", error);
+      // Attempt local write as safety net
+      try {
+        const dir = path.dirname(DATA_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf-8");
+      } catch {}
+      throw new Error(
+        `Supabase save failed: ${error.message}. Ensure the "party_state" table is created in Supabase SQL Editor.`
+      );
+    }
     return;
   }
 
@@ -217,7 +273,8 @@ function countWords(str: string): number {
 
 export async function GET() {
   const state = await readDB();
-  return NextResponse.json(state);
+  const storageInfo = getStorageInfo();
+  return NextResponse.json({ ...state, storageInfo });
 }
 
 export async function POST(req: Request) {
@@ -237,15 +294,20 @@ export async function POST(req: Request) {
         c.name.toUpperCase().replace(/\s*\(EX\)\s*/i, "") === cleanCode
     );
 
+    const storageInfo = getStorageInfo();
+
     // Allow LOGIN_VERIFY without mutating state
     if (action === "LOGIN_VERIFY") {
       if (!character) {
         return NextResponse.json(
-          { error: "Invalid access code. Only codes generated by the Host are allowed." },
+          {
+            error:
+              "Invalid access code. Only codes generated by the Host are allowed.",
+          },
           { status: 401 }
         );
       }
-      return NextResponse.json({ character, ...state });
+      return NextResponse.json({ character, ...state, storageInfo });
     }
 
     if (!character) {
@@ -403,14 +465,35 @@ export async function POST(req: Request) {
         });
         await writeDB(state);
       }
-      return NextResponse.json(state);
+      return NextResponse.json({ ...state, storageInfo });
+    }
+
+    // 6. HOST-ONLY: IMPORT FULL DATABASE BACKUP
+    if (action === "HOST_IMPORT_DATA") {
+      if (character.role !== "host") {
+        return NextResponse.json(
+          { error: "Only the Host can restore database backups." },
+          { status: 403 }
+        );
+      }
+      if (body.importedState && Array.isArray(body.importedState.events)) {
+        state.events = body.importedState.events;
+        if (
+          Array.isArray(body.importedState.roster) &&
+          body.importedState.roster.length > 0
+        ) {
+          state.roster = body.importedState.roster;
+        }
+        await writeDB(state);
+      }
+      return NextResponse.json({ ...state, storageInfo });
     }
 
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("API error:", err);
     return NextResponse.json(
-      { error: "Server error processing request." },
+      { error: err?.message || "Server error processing request." },
       { status: 500 }
     );
   }
