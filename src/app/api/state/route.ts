@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { Pool } from "pg";
 import fs from "fs";
 import path from "path";
 
@@ -136,24 +137,68 @@ const INITIAL_EVENTS: PartyEventItem[] = PICSUM_IDS.map((picId, i) => {
 
 const DATA_FILE = path.join(process.cwd(), "data", "party-driftwall-db.json");
 
+let pgPoolInstance: Pool | null = null;
+function getPgPool(): Pool | null {
+  const connectionString =
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
+  if (!connectionString) return null;
+  if (!pgPoolInstance) {
+    pgPoolInstance = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      max: 2,
+    });
+  }
+  return pgPoolInstance;
+}
+
+let tableEnsured = false;
+async function ensureTable(pool: Pool) {
+  if (tableEnsured) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS party_state (
+        id TEXT PRIMARY KEY,
+        payload JSONB NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+      );
+    `);
+    tableEnsured = true;
+  } catch (err) {
+    console.warn("Could not auto-create party_state table in Postgres:", err);
+  }
+}
+
 export function getStorageInfo() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
+  const pgUrl =
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
+  const supaUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supaKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const isSupabaseConfigured = Boolean(url && key);
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY;
+  const isConnected = Boolean(pgUrl || (supaUrl && supaKey));
   return {
-    isSupabaseConfigured,
-    storageType: isSupabaseConfigured ? "supabase" : "ephemeral",
-    previewUrl: url ? url.replace(/^(https?:\/\/[^.]+).*/, "$1...") : null,
+    isSupabaseConfigured: isConnected,
+    storageType: pgUrl ? "postgres" : isConnected ? "supabase" : "ephemeral",
+    previewUrl: supaUrl
+      ? supaUrl.replace(/^(https?:\/\/[^.]+).*/, "$1...")
+      : null,
   };
 }
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY;
   if (url && key) return createClient(url, key);
   return null;
 }
@@ -164,6 +209,57 @@ async function readDB(): Promise<DatabaseState> {
     events: INITIAL_EVENTS,
   };
 
+  // 1. Try Direct Postgres (from Vercel's POSTGRES_URL environment variables)
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      await ensureTable(pool);
+      const res = await pool.query(
+        "SELECT payload FROM party_state WHERE id = 'driftwall_v1' LIMIT 1"
+      );
+      if (res.rows.length > 0 && res.rows[0].payload) {
+        const payload = res.rows[0].payload as DatabaseState;
+        return {
+          roster:
+            Array.isArray(payload.roster) && payload.roster.length
+              ? payload.roster
+              : DEFAULT_ROSTER,
+          events:
+            Array.isArray(payload.events) && payload.events.length
+              ? payload.events
+              : INITIAL_EVENTS,
+        };
+      }
+
+      // If database table is empty, seed it with fallback/local data
+      let seedData = fallback;
+      if (fs.existsSync(DATA_FILE)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+          seedData = {
+            roster:
+              Array.isArray(raw.roster) && raw.roster.length
+                ? raw.roster
+                : DEFAULT_ROSTER,
+            events:
+              Array.isArray(raw.events) && raw.events.length
+                ? raw.events
+                : INITIAL_EVENTS,
+          };
+        } catch {}
+      }
+
+      await pool.query(
+        "INSERT INTO party_state (id, payload, updated_at) VALUES ('driftwall_v1', $1, now()) ON CONFLICT (id) DO UPDATE SET payload = $1, updated_at = now()",
+        [JSON.stringify(seedData)]
+      );
+      return seedData;
+    } catch (pgErr) {
+      console.warn("Direct Postgres read error, falling back to REST / local:", pgErr);
+    }
+  }
+
+  // 2. Try Supabase REST Client
   const supabase = getSupabase();
   if (supabase) {
     try {
@@ -213,10 +309,11 @@ async function readDB(): Promise<DatabaseState> {
         .upsert({ id: "driftwall_v1", payload: seedData });
       return seedData;
     } catch (e) {
-      console.warn("Supabase read error, falling back to local file:", e);
+      console.warn("Supabase REST read error, falling back to local file:", e);
     }
   }
 
+  // 3. Fallback: Local filesystem
   try {
     if (fs.existsSync(DATA_FILE)) {
       const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
@@ -238,26 +335,32 @@ async function readDB(): Promise<DatabaseState> {
 }
 
 async function writeDB(state: DatabaseState) {
+  // 1. Try Direct Postgres
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      await ensureTable(pool);
+      await pool.query(
+        "INSERT INTO party_state (id, payload, updated_at) VALUES ('driftwall_v1', $1, now()) ON CONFLICT (id) DO UPDATE SET payload = $1, updated_at = now()",
+        [JSON.stringify(state)]
+      );
+      return;
+    } catch (pgErr) {
+      console.error("Direct Postgres write error:", pgErr);
+    }
+  }
+
+  // 2. Try Supabase REST Client
   const supabase = getSupabase();
   if (supabase) {
     const { error } = await supabase
       .from("party_state")
       .upsert({ id: "driftwall_v1", payload: state });
-    if (error) {
-      console.error("Supabase upsert error:", error);
-      // Attempt local write as safety net
-      try {
-        const dir = path.dirname(DATA_FILE);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf-8");
-      } catch {}
-      throw new Error(
-        `Supabase save failed: ${error.message}. Ensure the "party_state" table is created in Supabase SQL Editor.`
-      );
-    }
-    return;
+    if (!error) return;
+    console.error("Supabase REST upsert error:", error);
   }
 
+  // 3. Safety net: Local File
   try {
     const dir = path.dirname(DATA_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
