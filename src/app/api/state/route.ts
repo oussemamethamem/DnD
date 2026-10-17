@@ -151,10 +151,24 @@ async function readDB(): Promise<DatabaseState> {
       .eq("id", "driftwall_v1")
       .single();
     if (!error && data?.payload) return data.payload as DatabaseState;
+
+    let seedData = fallback;
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+        seedData = {
+          roster: Array.isArray(raw.roster) && raw.roster.length ? raw.roster : DEFAULT_ROSTER,
+          events: Array.isArray(raw.events) && raw.events.length ? raw.events : INITIAL_EVENTS,
+        };
+      }
+    } catch (e) {
+      console.warn("Could not read local DB file for seeding, using fallback defaults:", e);
+    }
+
     await supabase
       .from("party_state")
-      .upsert({ id: "driftwall_v1", payload: fallback });
-    return fallback;
+      .upsert({ id: "driftwall_v1", payload: seedData });
+    return seedData;
   }
 
   try {
