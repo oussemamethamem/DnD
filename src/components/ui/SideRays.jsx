@@ -79,10 +79,32 @@ float motes(vec2 p, float cell, float t, float seed) {
   if (h > 0.5) return 0.0;
   vec2 center = 0.25 + 0.5 * vec2(hash(id + 1.7 + seed), hash(id + 3.1 + seed));
   center += 0.1 * vec2(sin(t * 0.7 + h * 31.0), cos(t * 0.6 + h * 23.0));
-  float size = mix(0.035, 0.09, hash(id + 5.3 + seed));
+  float size = mix(0.045, 0.11, hash(id + 5.3 + seed));
   float edge = length(fwidth(grid)) * 0.7;
   float twinkle = 0.55 + 0.45 * sin(t * 1.9 + h * 41.0);
-  return (1.0 - smoothstep(size - edge, size + edge, length(f - center))) * twinkle;
+
+  vec2 d = f - center;
+  float dist = length(d);
+  if (dist > size * 1.8) return 0.0;
+
+  float theta = atan(d.y, d.x);
+  float spin = h * 6.2831853 + t * (h - 0.5) * 0.35;
+  float sector = 1.57079632679;
+  float k = abs(fract((theta + spin) / sector) - 0.5) * 2.0;
+  float rStar = size * mix(0.18, 1.0, pow(k, 0.65));
+  float star = 1.0 - smoothstep(rStar - edge, rStar + edge, dist);
+
+  float cosS = cos(spin);
+  float sinS = sin(spin);
+  vec2 rotD = vec2(d.x * cosS - d.y * sinS, d.x * sinS + d.y * cosS);
+  vec2 a = abs(rotD);
+  float flare = max(
+    exp(-a.y * 24.0 / size) * exp(-a.x * 2.8 / size),
+    exp(-a.x * 24.0 / size) * exp(-a.y * 2.8 / size)
+  ) * 0.7 * smoothstep(size * 1.8, size * 0.4, dist);
+
+  float starShape = clamp(max(star, flare), 0.0, 1.0);
+  return starShape * twinkle;
 }
 
 void main() {
