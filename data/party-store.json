@@ -1,0 +1,191 @@
+[
+  {
+    "id": "event-1",
+    "title": "The Founding Chronicle 2007",
+    "date": "Cycle 2007",
+    "description": "Archivist record.",
+    "image": "https://picsum.photos/seed/party-history-1/800/1050",
+    "holoPreset": "gold",
+    "reviews": [
+      {
+        "characterId": "char-1",
+        "characterName": "Seraphina Vale",
+        "characterColor": "#f43f5e",
+        "rating": 5,
+        "comment": "Unbreakable vanguard spirit!",
+        "updatedAt": "2026-10-16T02:53:17.587Z"
+      }
+    ]
+  },
+  {
+    "id": "event-2",
+    "title": "Milestone #2",
+    "date": "Cycle 2008",
+    "description": "Official party chronicle #2. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-2/800/1050",
+    "holoPreset": "stars",
+    "reviews": []
+  },
+  {
+    "id": "event-3",
+    "title": "Milestone #3",
+    "date": "Cycle 2009",
+    "description": "Official party chronicle #3. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-3/800/1050",
+    "holoPreset": "shards",
+    "reviews": []
+  },
+  {
+    "id": "event-4",
+    "title": "Milestone #4",
+    "date": "Cycle 2010",
+    "description": "Official party chronicle #4. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-4/800/1050",
+    "holoPreset": "cosmos",
+    "reviews": []
+  },
+  {
+    "id": "event-5",
+    "title": "Milestone #5",
+    "date": "Cycle 2011",
+    "description": "Official party chronicle #5. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-5/800/1050",
+    "holoPreset": "rainbow",
+    "reviews": []
+  },
+  {
+    "id": "event-6",
+    "title": "Milestone #6",
+    "date": "Cycle 2012",
+    "description": "Official party chronicle #6. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-6/800/1050",
+    "holoPreset": "swirl",
+    "reviews": []
+  },
+  {
+    "id": "event-7",
+    "title": "Milestone #7",
+    "date": "Cycle 2013",
+    "description": "Official party chronicle #7. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-7/800/1050",
+    "holoPreset": "glitter",
+    "reviews": []
+  },
+  {
+    "id": "event-8",
+    "title": "Milestone #8",
+    "date": "Cycle 2014",
+    "description": "Official party chronicle #8. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-8/800/1050",
+    "holoPreset": "gold",
+    "reviews": []
+  },
+  {
+    "id": "event-9",
+    "title": "Milestone #9",
+    "date": "Cycle 2015",
+    "description": "Official party chronicle #9. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-9/800/1050",
+    "holoPreset": "bursts",
+    "reviews": []
+  },
+  {
+    "id": "event-10",
+    "title": "Milestone #10",
+    "date": "Cycle 2016",
+    "description": "Official party chronicle #10. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-10/800/1050",
+    "holoPreset": "stars",
+    "reviews": []
+  },
+  {
+    "id": "event-11",
+    "title": "Milestone #11",
+    "date": "Cycle 2017",
+    "description": "Official party chronicle #11. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-11/800/1050",
+    "holoPreset": "shards",
+    "reviews": []
+  },
+  {
+    "id": "event-12",
+    "title": "Milestone #12",
+    "date": "Cycle 2018",
+    "description": "Official party chronicle #12. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-12/800/1050",
+    "holoPreset": "cosmos",
+    "reviews": []
+  },
+  {
+    "id": "event-13",
+    "title": "Milestone #13",
+    "date": "Cycle 2019",
+    "description": "Official party chronicle #13. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-13/800/1050",
+    "holoPreset": "rainbow",
+    "reviews": []
+  },
+  {
+    "id": "event-14",
+    "title": "Milestone #14",
+    "date": "Cycle 2020",
+    "description": "Official party chronicle #14. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-14/800/1050",
+    "holoPreset": "swirl",
+    "reviews": []
+  },
+  {
+    "id": "event-15",
+    "title": "Milestone #15",
+    "date": "Cycle 2021",
+    "description": "Official party chronicle #15. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-15/800/1050",
+    "holoPreset": "glitter",
+    "reviews": []
+  },
+  {
+    "id": "event-16",
+    "title": "Milestone #16",
+    "date": "Cycle 2022",
+    "description": "Official party chronicle #16. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-16/800/1050",
+    "holoPreset": "gold",
+    "reviews": []
+  },
+  {
+    "id": "event-17",
+    "title": "Milestone #17",
+    "date": "Cycle 2023",
+    "description": "Official party chronicle #17. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-17/800/1050",
+    "holoPreset": "bursts",
+    "reviews": []
+  },
+  {
+    "id": "event-18",
+    "title": "Milestone #18",
+    "date": "Cycle 2024",
+    "description": "Official party chronicle #18. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-18/800/1050",
+    "holoPreset": "stars",
+    "reviews": []
+  },
+  {
+    "id": "event-19",
+    "title": "Milestone #19",
+    "date": "Cycle 2025",
+    "description": "Official party chronicle #19. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-19/800/1050",
+    "holoPreset": "cosmos",
+    "reviews": []
+  },
+  {
+    "id": "event-20",
+    "title": "Milestone #20",
+    "date": "Cycle 2026",
+    "description": "Official party chronicle #20. Click to inspect holographic card & flip for character ratings.",
+    "image": "https://picsum.photos/seed/party-history-20/800/1050",
+    "holoPreset": "cosmos",
+    "reviews": []
+  }
+]

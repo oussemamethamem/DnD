@@ -1,26 +1,107 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
+@theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --border: #27272a;
+  --input: #27272a;
+  --primary: #f43f5e;
+  --primary-foreground: #ffffff;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #060010;
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+@keyframes phantomFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.animate-phantom-float {
+  animation: phantomFloat 4s ease-in-out infinite;
 }
+
+.phantom-glow {
+  box-shadow: 0 0 25px -4px rgba(244, 63, 94, 0.25), inset 0 0 15px rgba(255, 255, 255, 0.04);
+}
+
+/* Works on Chrome, Edge, Safari, and Opera */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+/* Parchment Track (matches .phb background-color) */
+::-webkit-scrollbar-track {
+  background-color: #EEE5CE;
+  border-left: 2px solid #C9AD6A;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Crimson & Gold Ornate Thumb */
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7a2011 0%, #58180D 50%, #3d0f07 100%);
+  border: 2px solid #C9AD6A;
+  border-radius: 3px;
+  box-shadow: inset 0 0 3px rgba(255, 215, 0, 0.4);
+}
+
+/* Hover effect - brighter crimson & gold glow */
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #9b2816 0%, #7a2011 50%, #58180D 100%);
+  border-color: #e5c878;
+}
+
+/* Firefox fallback */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #58180D #EEE5CE;
+}
+
+/* =================================================================== */
+/* FLAME SWORD CURSOR (Cursors-4U)                                     */
+/* =================================================================== */
+@keyframes cursor-anim {
+  0.00% { cursor: url("data:image/webp;base64,UklGRgABAABXRUJQVlA4TPQAAAAvH8AHEEdgkG3kYJnuRI7iMZ4gEDSWxR4vMkG2TZlGcqKzz38A7pPmc4ZxKABH2962ze/Ch6udukY6Qk7QMzeCc5o4p8Orp/jcPwj4ChH9Z+C2bSPFhTpv/uJwrWB9wNX5+jMT9YydNHsGSrXjw1hRxFp/N2q7UwS7TqmdanARNW0IHCYijg8dvk63hs//5nSt+T4FUXt3Ikzw7lmiPfZxSE1A8O5Z0rOXUrN7I1QMqAeSOqS7yENqHjENtQngklbjVSFBpL3f1YQoU5lKBHB/K3fB2gS0VqbkkdZavZWKIKwUCdZwEQndbymCuKjZvpwd7gMj") 0 0, auto; }
+  16.67% { cursor: url("data:image/webp;base64,UklGRgQBAABXRUJQVlA4TPgAAAAvH8AHEEdgkG3kYJnuRI7iMZ4gEDSWxR4vMkG2TZlGcqKzz38A7pPmc4ZxKAC3tva2zSfJ/0FLHKXWwAiYwLlm+lA7oiYqqHVlD87/5woR/VfYtg2SQQafHD0AwEFF8tUBzSAefVv/2oqwFoDFAUAXj76tdwct46P0b7KE5H9tXeOxNgdqWkg3m6X93a7N9WKcavPV9WIcu3j0DTRYQvIVRNbPazx6UN5t7XqNkoHSIO9cPwh08ThI0RAIKeSiF1K6+DQbgGT5fssCHeTP/DNbAP0r34zfD1DK/KNbz1JKfmU2RJJiCSQFD5bQC4CZ2IgH7rby/rgFIg==") 0 0, auto; }
+  33.33% { cursor: url("data:image/webp;base64,UklGRvwAAABXRUJQVlA4TPAAAAAvH8AHEEdgkG3kYJnuRI7iMZ4gEDSWxR4vMkG2TZlGcqKzz38A7pPmc4ZxKAC3tva2zafwn79VVmtxBE3gXCf8cBuJGq5+t6rsuRE+rhDRfwVu2ygZH8Mvtmt0oqhyXs8KmTBs117p5XRe/yhce1Y1ZEauwR1EjiX8u2el4aLq6KnB1Y0u4u4FvsifPwm/+8XfBEbDrxps4nEMUejd1eS9D17C7ImRa2ig3c8FabBmkWdJPVbDKaa+MJPVcBsKRC19P0YB0zGMgQE8Pdgj6RuBlMIoPZZSig8WQbSIsIBquGYBzbcEw4Rc22xKr7ZTYAA=") 0 0, auto; }
+  50.00% { cursor: url("data:image/webp;base64,UklGRvIAAABXRUJQVlA4TOYAAAAvH8AHEEdgkG3kYJnuRI7iMZ4gEDSWxR4vMkG2TZlGcqKzz38A7pPmc4ZxKADHtvY2yjcD/1FLpmW8BFaQqZM+0UarFtXvdipYt8LnLUT0n4Hbto3Yod58yOkxVsb18W8VhOn02AEXh11L8TI6qgneyPyFAvfeZc1/8OKh5zX7gOKASi2hH/uiHLUs76azbyizBAqlPa6SyZ+A9qGzeW7kYw01L5V12OXF8ogtu5THC9KOprsogGT+eUoGNec4RwV4fuSTeDYDOcfZRsw5p0cmEZI0FbSFGxU8G4BIrIwbbtbm1ekaTA==") 0 0, auto; }
+  66.67% { cursor: url("data:image/webp;base64,UklGRvQAAABXRUJQVlA4TOcAAAAvH8AHEEdgkG3kYJnuRI7iMZ4gEDSWxR4vMkG2TZlGcqKzz38A7pPmc4ZxKADHtvZGzUfQUUumhVkCK8jU2Nan2mlUD5VoXXnfCp+2ENF/BW7bKDnIMf5iOUcjHOajjLUV3XJugSjYH+ZPDFFUZkkx5rLS3ysxVEO3SS+VEItuNWbIshiou582srHIv32YxiIZSlkQlBolfN2ZFwHNZ0OPjOwukHpLmAIWejOhhll7H+oKaWbd2QlAMvzevYGKveudAnjceBd9PRCC600NQwj+Rg8RSRol5ISjEopvcUQjHDlqxd2yBToA") 0 0, auto; }
+  83.33% { cursor: url("data:image/webp;base64,UklGRvgAAABXRUJQVlA4TOwAAAAvH8AHEEdgkG3kYJnuRI7iMZ4gEDSWxR4vMkG2TZlGcqKzz38A7pPmc4ZxKABHkiTHTUNMjAsNF7gn4AXUttpZm+rWPlpzLi3g3Sv6vhDRfwVu2yg5yDH+Yrt28HBZ/yngrg1dkTsZfs7yKxt1zLrelDBk/Y866OCuhaLRHYMrCl5UOppRXnRzNQBMIzJUo74KJu6esYZV9TgG48pEoYLJJ9fstUBVQfWWkQqr9CapxYrOMRnQRFl1DyFDoqXflyhgsQ99YACvz/ZC+nogpdBLi6WU4rNFIjMzYUJJuGNC9S3BwEPWbCqetlOgAw==") 0 0, auto; }
+}
+
+html, body, * {
+  animation: cursor-anim 600ms step-end infinite;
+}
+
+a, button, input, textarea, label, [role=button], select, option {
+  cursor: inherit !important;
+}
+
+
