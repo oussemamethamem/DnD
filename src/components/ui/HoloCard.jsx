@@ -217,6 +217,11 @@ void main() {
     outColor = vec4(0.0);
     return;
   }
+  if (uIntensity <= 0.0001 && uGlare <= 0.0001 && uEdge <= 0.0001) {
+    vec3 baseArt = uReady > 0.5 ? sampled.rgb : vec3(0.12);
+    outColor = vec4(baseArt * alpha, alpha);
+    return;
+  }
   vec3 art = uReady > 0.5 ? pow(sampled.rgb, vec3(2.2)) : vec3(0.12);
 
   mat3 rx = mat3(1.0, 0.0, 0.0, 0.0, cos(uTilt.x), sin(uTilt.x), 0.0, -sin(uTilt.x), cos(uTilt.x));
@@ -338,13 +343,15 @@ export default function HoloCard({
   const [flipped, setFlipped] = useState(false);
   const flippable = Boolean(backImage);
 
+  const isNoShine = preset === 'none';
+
   settingsRef.current = {
     preset: Math.max(0, PRESETS.indexOf(preset)),
-    intensity: clamp(intensity, 0, 1),
+    intensity: isNoShine ? 0 : clamp(intensity, 0, 1),
     scale: clamp(scale, 0.25, 4),
-    edgeSparkle: clamp(edgeSparkle, 0, 1),
-    frame: clamp(frame, 0, 20) / 100,
-    glare: clamp(glare, 0, 1),
+    edgeSparkle: isNoShine ? 0 : clamp(edgeSparkle, 0, 1),
+    frame: isNoShine ? 0 : clamp(frame, 0, 20) / 100,
+    glare: isNoShine ? 0 : clamp(glare, 0, 1),
     foil: parseColor(foilColor),
     radius: Math.max(0, radius),
     tiltMax: clamp(tiltMax, 0, 45),

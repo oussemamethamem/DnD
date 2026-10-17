@@ -3,10 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
 
-// Force Vercel & Next.js to NEVER cache this route or its underlying fetch calls
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
+
 
 // ============================================================================
 // EASY ACCESS CODES & NAMES ROSTER (Editable here OR inside the Host Web UI!)
@@ -94,6 +91,7 @@ export interface PartyEventItem {
   description: string;
   image: string;
   holoPreset?:
+    | "none"
     | "bursts"
     | "stars"
     | "shards"
