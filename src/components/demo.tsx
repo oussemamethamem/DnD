@@ -160,6 +160,12 @@ export default function WorksWheelDemo() {
   // Zoomed Card & Flip State
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
   const [isCardFlipped, setIsCardFlipped] = React.useState(false);
+  const [isHoloActive, setIsHoloActive] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsHoloActive(false);
+    setIsCardFlipped(false);
+  }, [activeEventId]);
 
   // Left-Side Rating & 7-Word Comment State
   const [myRating, setMyRating] = React.useState<number>(5);
@@ -194,7 +200,7 @@ export default function WorksWheelDemo() {
     date: "",
     description: "",
     image: "",
-    holoPreset: "bursts",
+    holoPreset: "none",
   });
 
   // Mobile Responsiveness & Adaptive Viewport State
@@ -269,7 +275,7 @@ export default function WorksWheelDemo() {
       date: `Era ${2010 + nextNum}`,
       description: "A newly recorded memory in the party's drifting archive.",
       image: `https://picsum.photos/seed/batch-${Date.now() % 1000}/700/900`,
-      holoPreset: presets[nextNum % presets.length],
+      holoPreset: "none",
       cropPosition: "50% 30%",
       reviews: [],
     };
@@ -1161,7 +1167,7 @@ export default function WorksWheelDemo() {
                     date: `Era ${new Date().getFullYear()}`,
                     description: "",
                     image: "",
-                    holoPreset: "bursts",
+                    holoPreset: "none",
                     cropPosition: "50% 30%",
                   });
                   setHostCardModalOpen(true);
@@ -1257,6 +1263,7 @@ export default function WorksWheelDemo() {
             onSelectItem={(item) => {
               setActiveEventId(item.id);
               setIsCardFlipped(false);
+              setIsHoloActive(false);
             }}
           />
         )}
@@ -1447,7 +1454,21 @@ export default function WorksWheelDemo() {
                     className="flex cursor-pointer items-center gap-2 rounded-full bg-white px-4 py-1.5 text-xs font-extrabold text-zinc-950 shadow-lg transition hover:scale-105"
                   >
                     <RotateCw className="size-3.5" />
-                    {isCardFlipped ? "Show Holo Front" : "Flip Card for Story"}
+                    {isCardFlipped ? "Show Front Photo" : "Flip Card for Story"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsHoloActive((prev) => !prev)}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-bold transition shadow-lg ${
+                      isHoloActive
+                        ? "border-amber-400/80 bg-amber-500/25 text-amber-200 hover:bg-amber-500/35 shadow-amber-500/20"
+                        : "border-white/20 bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700/80 hover:text-white"
+                    }`}
+                    title={isHoloActive ? "Turn off holographic foil" : "Turn on holographic foil"}
+                  >
+                    <Sparkles className={`size-3.5 ${isHoloActive ? "text-amber-300 animate-pulse" : "text-zinc-400"}`} />
+                    <span>{isHoloActive ? "Holo: ON" : "Holo: OFF"}</span>
                   </button>
 
                   {character.role === "host" && (
@@ -1488,8 +1509,8 @@ export default function WorksWheelDemo() {
                   draggable={false}
                   tilt={!isCardFlipped}
                   tiltMax={12}
-                  glare={activeEvent.holoPreset === "none" ? false : true}
-                  glareOpacity={activeEvent.holoPreset === "none" ? 0 : 0.24}
+                  glare={isHoloActive}
+                  glareOpacity={isHoloActive ? 0.24 : 0}
                   width={flipWidth}
                   height={flipHeight}
                   radius={22}
@@ -1503,10 +1524,16 @@ export default function WorksWheelDemo() {
                       <HoloCard
                         image={activeEvent.image}
                         alt={activeEvent.title}
-                        preset={activeEvent.holoPreset || "bursts"}
-                        intensity={activeEvent.holoPreset === "none" ? 0 : 0.9}
-                        edgeSparkle={activeEvent.holoPreset === "none" ? 0 : 0.85}
-                        glare={activeEvent.holoPreset === "none" ? 0 : 0.55}
+                        preset={
+                          isHoloActive
+                            ? activeEvent.holoPreset && activeEvent.holoPreset !== "none"
+                              ? activeEvent.holoPreset
+                              : "bursts"
+                            : "none"
+                        }
+                        intensity={isHoloActive ? 0.9 : 0}
+                        edgeSparkle={isHoloActive ? 0.85 : 0}
+                        glare={isHoloActive ? 0.55 : 0}
                         idle={true}
                         width={holoWidth}
                         radius={16}
@@ -1520,9 +1547,13 @@ export default function WorksWheelDemo() {
                         <h3 className="mt-0.5 text-sm sm:text-base font-extrabold text-white">
                           {activeEvent.title}
                         </h3>
-                        <div className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-sky-300">
-                          <Sparkles className="size-3" /> Click card to flip for
-                          cropped photo & quoted story
+                        <div className="mt-1.5 flex items-center justify-between gap-1 text-[10px] font-semibold text-sky-300">
+                          <span className="flex items-center gap-1">
+                            <Sparkles className="size-3" /> Click card to flip
+                          </span>
+                          <span className="text-zinc-400 text-[9px] font-mono">
+                            {isHoloActive ? "✨ Holo ON" : "Matte (Holo OFF)"}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1725,7 +1756,7 @@ export default function WorksWheelDemo() {
                       Holo Foil Style
                     </label>
                     <select
-                      value={editingEvent.holoPreset || "bursts"}
+                      value={editingEvent.holoPreset || "none"}
                       onChange={(e) =>
                         setEditingEvent((p) => ({
                           ...p,
@@ -2495,7 +2526,7 @@ create policy "Allow all access to party_state" on party_state for all using (tr
                             Holographic Foil Preset
                           </label>
                           <select
-                            value={card.holoPreset || "bursts"}
+                            value={card.holoPreset || "none"}
                             onChange={(e) =>
                               handleUpdateCardField(
                                 card.id,
@@ -2906,7 +2937,7 @@ create policy "Allow all access to party_state" on party_state for all using (tr
                           date: `Era ${new Date().getFullYear()}`,
                           description: "",
                           image: "",
-                          holoPreset: "bursts",
+                          holoPreset: "none",
                         });
                         setHostCardModalOpen(true);
                         setMobileMenuOpen(false);

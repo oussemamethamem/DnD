@@ -132,7 +132,7 @@ const INITIAL_EVENTS: PartyEventItem[] = PICSUM_IDS.map((picId, i) => {
     date: `Era ${2010 + num}`,
     description: `Through the shifting tides of our history, this moment stood as an unbreakable vow among everyone gathered at the table.`,
     image: `https://picsum.photos/id/${picId}/700/900`,
-    holoPreset: presets[i % presets.length],
+    holoPreset: "none",
     reviews: [],
   };
 });
@@ -449,7 +449,7 @@ export async function POST(req: Request) {
           image:
             eventData.image ||
             `https://picsum.photos/seed/drift-card-${nextNum}/700/900`,
-          holoPreset: eventData.holoPreset || "bursts",
+          holoPreset: eventData.holoPreset || "none",
           cropPosition: eventData.cropPosition || "50% 30%",
           reviews: [],
         });
@@ -508,7 +508,7 @@ export async function POST(req: Request) {
             image:
               String(e.image || "").trim() ||
               `https://picsum.photos/seed/drift-card-${idx + 1}/700/900`,
-            holoPreset: e.holoPreset || "bursts",
+            holoPreset: e.holoPreset || "none",
             cropPosition: e.cropPosition || existing?.cropPosition || "50% 30%",
             reviews: Array.isArray(e.reviews)
               ? e.reviews

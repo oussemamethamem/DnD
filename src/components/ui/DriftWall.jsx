@@ -286,8 +286,12 @@ export default function DriftWall({
         {
       /* Shiny Holographic Foil Overlay */
     }
-        <span className="drift-wall__holo" aria-hidden="true" />
-        {holoEnabled && item.holoPreset !== "none" && <span className="drift-wall__holo-glimmer" aria-hidden="true" />}
+        {holoEnabled && item.holoPreset && item.holoPreset !== "none" && (
+          <span className="drift-wall__holo" aria-hidden="true" />
+        )}
+        {holoEnabled && item.holoPreset && item.holoPreset !== "none" && (
+          <span className="drift-wall__holo-glimmer" aria-hidden="true" />
+        )}
         <span className="drift-wall__overlay" aria-hidden="true" />
 
         {/* Card info badge */}
