@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { Pool } from "pg";
 import fs from "fs";
 import path from "path";
+
+// Force Vercel & Next.js to NEVER cache this route or its underlying fetch calls
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 // ============================================================================
 // EASY ACCESS CODES & NAMES ROSTER (Editable here OR inside the Host Web UI!)
@@ -87,7 +91,7 @@ export interface PartyEventItem {
   id: string;
   title: string;
   date: string;
-  description: string; // Displayed in quotes under the half-cropped image when flipped
+  description: string;
   image: string;
   holoPreset?:
     | "bursts"
@@ -98,7 +102,7 @@ export interface PartyEventItem {
     | "swirl"
     | "glitter"
     | "gold";
-  cropPosition?: string; // e.g. "50% 30%" for custom focal crop on flipped back banner
+  cropPosition?: string;
   reviews: ReviewEntry[];
 }
 
@@ -137,70 +141,41 @@ const INITIAL_EVENTS: PartyEventItem[] = PICSUM_IDS.map((picId, i) => {
 
 const DATA_FILE = path.join(process.cwd(), "data", "party-driftwall-db.json");
 
-let pgPoolInstance: Pool | null = null;
-function getPgPool(): Pool | null {
-  const connectionString =
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING;
-  if (!connectionString) return null;
-  if (!pgPoolInstance) {
-    pgPoolInstance = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-      max: 2,
-    });
-  }
-  return pgPoolInstance;
-}
-
-let tableEnsured = false;
-async function ensureTable(pool: Pool) {
-  if (tableEnsured) return;
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS party_state (
-        id TEXT PRIMARY KEY,
-        payload JSONB NOT NULL,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-      );
-    `);
-    tableEnsured = true;
-  } catch (err) {
-    console.warn("Could not auto-create party_state table in Postgres:", err);
-  }
+function getSupabaseCredentials() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    "";
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    "";
+  return { url: url.trim(), key: key.trim() };
 }
 
 export function getStorageInfo() {
-  const pgUrl =
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING;
-  const supaUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supaKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY;
-  const isConnected = Boolean(pgUrl || (supaUrl && supaKey));
+  const { url, key } = getSupabaseCredentials();
+  const isConnected = Boolean(url && key);
   return {
     isSupabaseConfigured: isConnected,
-    storageType: pgUrl ? "postgres" : isConnected ? "supabase" : "ephemeral",
-    previewUrl: supaUrl
-      ? supaUrl.replace(/^(https?:\/\/[^.]+).*/, "$1...")
-      : null,
+    storageType: isConnected ? "supabase" : "ephemeral",
+    previewUrl: url ? url.replace(/^(https?:\/\/[^.]+).*/, "\$1...") : null,
   };
 }
 
 function getSupabase() {
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY;
-  if (url && key) return createClient(url, key);
-  return null;
+  const { url, key } = getSupabaseCredentials();
+  if (!url || !key) return null;
+
+  return createClient(url, key, {
+    auth: { persistSession: false },
+    global: {
+      // Force every Supabase REST call to bypass Next.js / Vercel fetch cache
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
+  });
 }
 
 async function readDB(): Promise<DatabaseState> {
@@ -209,111 +184,70 @@ async function readDB(): Promise<DatabaseState> {
     events: INITIAL_EVENTS,
   };
 
-  // 1. Try Direct Postgres (from Vercel's POSTGRES_URL environment variables)
-  const pool = getPgPool();
-  if (pool) {
-    try {
-      await ensureTable(pool);
-      const res = await pool.query(
-        "SELECT payload FROM party_state WHERE id = 'driftwall_v1' LIMIT 1"
-      );
-      if (res.rows.length > 0 && res.rows[0].payload) {
-        const payload = res.rows[0].payload as DatabaseState;
-        return {
-          roster:
-            Array.isArray(payload.roster) && payload.roster.length
-              ? payload.roster
-              : DEFAULT_ROSTER,
-          events:
-            Array.isArray(payload.events) && payload.events.length
-              ? payload.events
-              : INITIAL_EVENTS,
-        };
-      }
-
-      // If database table is empty, seed it with fallback/local data
-      let seedData = fallback;
-      if (fs.existsSync(DATA_FILE)) {
-        try {
-          const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
-          seedData = {
-            roster:
-              Array.isArray(raw.roster) && raw.roster.length
-                ? raw.roster
-                : DEFAULT_ROSTER,
-            events:
-              Array.isArray(raw.events) && raw.events.length
-                ? raw.events
-                : INITIAL_EVENTS,
-          };
-        } catch {}
-      }
-
-      await pool.query(
-        "INSERT INTO party_state (id, payload, updated_at) VALUES ('driftwall_v1', $1, now()) ON CONFLICT (id) DO UPDATE SET payload = $1, updated_at = now()",
-        [JSON.stringify(seedData)]
-      );
-      return seedData;
-    } catch (pgErr) {
-      console.warn("Direct Postgres read error, falling back to REST / local:", pgErr);
-    }
-  }
-
-  // 2. Try Supabase REST Client
   const supabase = getSupabase();
   if (supabase) {
+    const { data, error } = await supabase
+      .from("party_state")
+      .select("payload")
+      .eq("id", "driftwall_v1")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase readDB error:", error);
+      // Do NOT overwrite the database on a read error! Throw so we don't wipe user data.
+      throw new Error(
+        `Supabase Read Error (${error.code}): ${error.message}. Make sure the 'party_state' table exists and RLS allows SELECT.`
+      );
+    }
+
+    // If the row exists and has payload data, return it
+    if (data && data.payload) {
+      const payload = data.payload as DatabaseState;
+      return {
+        roster:
+          Array.isArray(payload.roster) && payload.roster.length
+            ? payload.roster
+            : DEFAULT_ROSTER,
+        events: Array.isArray(payload.events)
+          ? payload.events
+          : INITIAL_EVENTS,
+      };
+    }
+
+    // ONLY seed the database if `data` is null (meaning the row 'driftwall_v1' truly does not exist yet)
+    let seedData = fallback;
     try {
-      const { data, error } = await supabase
-        .from("party_state")
-        .select("payload")
-        .eq("id", "driftwall_v1")
-        .single();
-      if (!error && data?.payload) {
-        const payload = data.payload as DatabaseState;
-        return {
+      if (fs.existsSync(DATA_FILE)) {
+        const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+        seedData = {
           roster:
-            Array.isArray(payload.roster) && payload.roster.length
-              ? payload.roster
+            Array.isArray(raw.roster) && raw.roster.length
+              ? raw.roster
               : DEFAULT_ROSTER,
           events:
-            Array.isArray(payload.events) && payload.events.length
-              ? payload.events
+            Array.isArray(raw.events) && raw.events.length
+              ? raw.events
               : INITIAL_EVENTS,
         };
       }
+    } catch {}
 
-      let seedData = fallback;
-      try {
-        if (fs.existsSync(DATA_FILE)) {
-          const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
-          seedData = {
-            roster:
-              Array.isArray(raw.roster) && raw.roster.length
-                ? raw.roster
-                : DEFAULT_ROSTER,
-            events:
-              Array.isArray(raw.events) && raw.events.length
-                ? raw.events
-                : INITIAL_EVENTS,
-          };
-        }
-      } catch (e) {
-        console.warn(
-          "Could not read local DB file for seeding, using fallback defaults:",
-          e
-        );
-      }
+    const { error: seedErr } = await supabase.from("party_state").upsert(
+      {
+        id: "driftwall_v1",
+        payload: seedData,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
 
-      await supabase
-        .from("party_state")
-        .upsert({ id: "driftwall_v1", payload: seedData });
-      return seedData;
-    } catch (e) {
-      console.warn("Supabase REST read error, falling back to local file:", e);
+    if (seedErr) {
+      console.error("Supabase initial seed error:", seedErr);
     }
+    return seedData;
   }
 
-  // 3. Fallback: Local filesystem
+  // Fallback for local offline development only
   try {
     if (fs.existsSync(DATA_FILE)) {
       const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
@@ -335,38 +269,35 @@ async function readDB(): Promise<DatabaseState> {
 }
 
 async function writeDB(state: DatabaseState) {
-  // 1. Try Direct Postgres
-  const pool = getPgPool();
-  if (pool) {
-    try {
-      await ensureTable(pool);
-      await pool.query(
-        "INSERT INTO party_state (id, payload, updated_at) VALUES ('driftwall_v1', $1, now()) ON CONFLICT (id) DO UPDATE SET payload = $1, updated_at = now()",
-        [JSON.stringify(state)]
-      );
-      return;
-    } catch (pgErr) {
-      console.error("Direct Postgres write error:", pgErr);
-    }
-  }
-
-  // 2. Try Supabase REST Client
   const supabase = getSupabase();
   if (supabase) {
-    const { error } = await supabase
-      .from("party_state")
-      .upsert({ id: "driftwall_v1", payload: state });
-    if (!error) return;
-    console.error("Supabase REST upsert error:", error);
+    const { error } = await supabase.from("party_state").upsert(
+      {
+        id: "driftwall_v1",
+        payload: state,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+
+    if (error) {
+      console.error("Supabase writeDB error:", error);
+      throw new Error(
+        `Supabase Save Failed (${error.code}): ${error.message}`
+      );
+    }
+    return;
   }
 
-  // 3. Safety net: Local File
+  // Local development file fallback
   try {
     const dir = path.dirname(DATA_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf-8");
-  } catch (e) {
-    console.error("Local DB write error:", e);
+  } catch (e: any) {
+    throw new Error(
+      "Supabase environment variables are not active on this server, and local filesystem is read-only."
+    );
   }
 }
 
@@ -375,9 +306,29 @@ function countWords(str: string): number {
 }
 
 export async function GET() {
-  const state = await readDB();
-  const storageInfo = getStorageInfo();
-  return NextResponse.json({ ...state, storageInfo });
+  try {
+    const state = await readDB();
+    const storageInfo = getStorageInfo();
+    return NextResponse.json(
+      { ...state, storageInfo },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        },
+      }
+    );
+  } catch (err: any) {
+    console.error("GET /api/state error:", err);
+    return NextResponse.json(
+      {
+        roster: DEFAULT_ROSTER,
+        events: INITIAL_EVENTS,
+        storageInfo: getStorageInfo(),
+        error: err?.message,
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: Request) {
@@ -420,7 +371,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. GUEST / PLAYER UPSERT RATING & COMMENT (Max 7 words, 1 per user per card, cannot delete)
+    // 1. GUEST / PLAYER UPSERT RATING & COMMENT
     if (action === "UPSERT_REVIEW") {
       const cleanComment = String(comment || "").trim();
       const words = countWords(cleanComment);
@@ -461,10 +412,10 @@ export async function POST(req: Request) {
 
       state.events[idx] = card;
       await writeDB(state);
-      return NextResponse.json(state);
+      return NextResponse.json({ ...state, storageInfo });
     }
 
-    // 2. HOST-ONLY: ADD OR EDIT CARD (Dynamically fits into DriftWall)
+    // 2. HOST-ONLY: ADD OR EDIT CARD
     if (action === "HOST_SAVE_EVENT") {
       if (character.role !== "host") {
         return NextResponse.json(
@@ -507,7 +458,7 @@ export async function POST(req: Request) {
       }
 
       await writeDB(state);
-      return NextResponse.json(state);
+      return NextResponse.json({ ...state, storageInfo });
     }
 
     // 3. HOST-ONLY: DELETE CARD
@@ -520,10 +471,10 @@ export async function POST(req: Request) {
       }
       state.events = state.events.filter((e) => e.id !== eventId);
       await writeDB(state);
-      return NextResponse.json(state);
+      return NextResponse.json({ ...state, storageInfo });
     }
 
-    // 4. HOST-ONLY: UPDATE PLAYER ACCESS CODES & NAMES WITHOUT TOUCHING CODE
+    // 4. HOST-ONLY: UPDATE PLAYER ACCESS CODES & NAMES
     if (action === "HOST_UPDATE_ROSTER") {
       if (character.role !== "host") {
         return NextResponse.json(
@@ -535,7 +486,7 @@ export async function POST(req: Request) {
         state.roster = rosterData;
         await writeDB(state);
       }
-      return NextResponse.json(state);
+      return NextResponse.json({ ...state, storageInfo });
     }
 
     // 5. HOST-ONLY: BATCH SAVE/REPLACE ALL EVENTS FROM CONTROL CENTER / DISPLAY ALL
