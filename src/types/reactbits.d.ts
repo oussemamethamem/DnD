@@ -68,6 +68,7 @@ declare module "@/components/ui/FlipCard" {
 
 declare module "@/components/ui/HoloCard" {
   export type HoloPreset =
+    | "none"
     | "bursts"
     | "stars"
     | "shards"
