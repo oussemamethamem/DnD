@@ -47,6 +47,19 @@ import {
 
 const SESSION_CODE_KEY = "party_driftwall_access_code_v1";
 
+export const CHARACTER_CURSOR_THEMES: Record<
+  string,
+  { color: string; secondaryColor: string }
+> = {
+  Chaos: { color: "#ff2200", secondaryColor: "#7f1d1d" },
+  Constantine: { color: "#38bdf8", secondaryColor: "#0369a1" },
+  Plasmoid: { color: "#fbbf24", secondaryColor: "#34d399" },
+  "Fredrick(ex)": { color: "#22c55e", secondaryColor: "#051205" },
+  Fredrick: { color: "#22c55e", secondaryColor: "#051205" },
+  Kailos: { color: "#6366f1", secondaryColor: "#312e81" },
+  Night: { color: "#ffb347", secondaryColor: "#78350f" },
+};
+
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
@@ -66,6 +79,42 @@ export default function WorksWheelDemo() {
   const [character, setCharacter] = React.useState<CharacterProfile | null>(
     null
   );
+
+  // Dynamic Cursor & Ambient Dual-Color Theming per Character Entry
+  const currentCursorTheme = React.useMemo(() => {
+    if (character) {
+      if (CHARACTER_CURSOR_THEMES[character.name]) {
+        return CHARACTER_CURSOR_THEMES[character.name];
+      }
+      if (character.color) {
+        return {
+          color: character.color,
+          secondaryColor: character.secondaryColor || character.color,
+        };
+      }
+    }
+    return { color: "#ffb347", secondaryColor: "#78350f" };
+  }, [character]);
+
+  const previewTheme = React.useMemo(() => {
+    if (character) return currentCursorTheme;
+    if (codeInput.trim()) {
+      const match = roster.find(
+        (r) =>
+          r.code.toLowerCase() === codeInput.trim().toLowerCase() ||
+          r.name.toLowerCase() === codeInput.trim().toLowerCase()
+      );
+      if (match) {
+        return (
+          CHARACTER_CURSOR_THEMES[match.name] || {
+            color: match.color,
+            secondaryColor: match.secondaryColor || match.color,
+          }
+        );
+      }
+    }
+    return { color: "#ffb347", secondaryColor: "#78350f" };
+  }, [character, currentCursorTheme, codeInput, roster]);
 
   // Zoomed Card & Flip State
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
@@ -516,12 +565,16 @@ export default function WorksWheelDemo() {
       "#ec4899",
       "#60a5fa",
     ];
+    const themeDefault = CHARACTER_CURSOR_THEMES[newPlayerName.trim()];
     const nextChar: CharacterProfile = {
       id: `char-${Date.now()}`,
       name: newPlayerName.trim(),
       code: newPlayerCode.trim().toUpperCase(),
       title: newPlayerTitle.trim() || "Party Guest",
-      color: palette[roster.length % palette.length],
+      color: themeDefault
+        ? themeDefault.color
+        : palette[roster.length % palette.length],
+      secondaryColor: themeDefault ? themeDefault.secondaryColor : undefined,
       role: "member",
     };
     const updated = [...roster, nextChar];
@@ -552,6 +605,7 @@ export default function WorksWheelDemo() {
     return (
       <GlowCursor
         color="#ffb347"
+        secondaryColor="#78350f"
         intensity={1.3}
         trailWidth={3.5}
         linger={1}
@@ -567,8 +621,8 @@ export default function WorksWheelDemo() {
             followMouse={true}
             intensity={2.1}
             origin="top-right"
-            rayColor1="#FFC46B"
-            rayColor2="#96c8ff"
+            rayColor1="#ffb347"
+            rayColor2="#78350f"
             speed={2.2}
             spread={2.8}
             falloff={1.1}
@@ -582,7 +636,7 @@ export default function WorksWheelDemo() {
             intensity={1.8}
             origin="bottom-left"
             rayColor1="#38bdf8"
-            rayColor2="#a855f7"
+            rayColor2="#0369a1"
             speed={1.8}
             spread={2.5}
             falloff={1.1}
@@ -627,7 +681,8 @@ export default function WorksWheelDemo() {
   if (!character) {
     return (
       <GlowCursor
-        color="#ffb347"
+        color={previewTheme.color}
+        secondaryColor={previewTheme.secondaryColor}
         intensity={1.3}
         trailWidth={3.5}
         linger={1}
@@ -663,7 +718,7 @@ export default function WorksWheelDemo() {
           />
         </div>
 
-        {/* Dual Volumetric Light: Top-Right Gold + Bottom-Left Cyan/Violet */}
+        {/* Dual Volumetric Light */}
         <div className="pointer-events-none fixed inset-0 z-0 h-screen w-screen overflow-hidden">
           <SideRays
             density={6}
@@ -671,8 +726,8 @@ export default function WorksWheelDemo() {
             followMouse={true}
             intensity={2.1}
             origin="top-right"
-            rayColor1="#FFC46B"
-            rayColor2="#96c8ff"
+            rayColor1={previewTheme.color}
+            rayColor2={previewTheme.secondaryColor}
             speed={2.2}
             spread={2.8}
             falloff={1.1}
@@ -797,7 +852,8 @@ export default function WorksWheelDemo() {
 
   return (
     <GlowCursor
-      color="#ffb347"
+      color={currentCursorTheme.color}
+      secondaryColor={currentCursorTheme.secondaryColor}
       intensity={1.3}
       trailWidth={3.5}
       linger={1}
@@ -815,8 +871,8 @@ export default function WorksWheelDemo() {
           followMouse={true}
           intensity={1.9}
           origin="top-right"
-          rayColor1="#FFC46B"
-          rayColor2="#96c8ff"
+          rayColor1={currentCursorTheme.color}
+          rayColor2={currentCursorTheme.secondaryColor}
           speed={2.2}
           spread={2}
         />
@@ -827,8 +883,11 @@ export default function WorksWheelDemo() {
         {/* User Character Pill */}
         <div className="pointer-events-auto flex items-center gap-2.5 rounded-full border border-white/15 bg-zinc-900/85 px-3 py-1.5 sm:px-4 sm:py-2 backdrop-blur-md">
           <span
-            className="size-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: character.color }}
+            className="size-2.5 rounded-full shrink-0 shadow-sm"
+            style={{
+              background: `linear-gradient(135deg, ${currentCursorTheme.color}, ${currentCursorTheme.secondaryColor})`,
+              boxShadow: `0 0 10px ${currentCursorTheme.color}`,
+            }}
           />
           <div className="text-xs">
             <span className="font-bold text-white">{character.name}</span>
@@ -1311,9 +1370,25 @@ export default function WorksWheelDemo() {
                         className="rounded-2xl border border-white/60 bg-white/90 p-4 text-zinc-900 shadow-[0_0_30px_rgba(255,255,255,0.32)] backdrop-blur-md"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold tracking-tight text-zinc-900">
-                            {rev.characterName}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="size-2.5 rounded-full shrink-0 shadow-sm"
+                              style={{
+                                background: `linear-gradient(135deg, ${
+                                  CHARACTER_CURSOR_THEMES[rev.characterName]?.color ||
+                                  roster.find((m) => m.name === rev.characterName)?.color ||
+                                  "#ffb347"
+                                }, ${
+                                  CHARACTER_CURSOR_THEMES[rev.characterName]?.secondaryColor ||
+                                  roster.find((m) => m.name === rev.characterName)?.secondaryColor ||
+                                  "#78350f"
+                                })`,
+                              }}
+                            />
+                            <span className="text-xs font-extrabold tracking-tight text-zinc-900">
+                              {rev.characterName}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-0.5">
                             {Array.from({ length: 5 }, (_, idx) => (
                               <Star
@@ -1542,18 +1617,33 @@ export default function WorksWheelDemo() {
                     key={member.id}
                     className="grid grid-cols-12 items-center gap-2 rounded-xl border border-white/10 bg-black/40 p-2 text-xs"
                   >
-                    <input
-                      type="text"
-                      value={member.name}
-                      onChange={(e) => {
-                        const copy = [...roster];
-                        copy[i] = { ...member, name: e.target.value };
-                        setRoster(copy);
-                      }}
-                      onBlur={() => handleSaveRoster(roster)}
-                      className="col-span-5 rounded-lg border border-white/10 bg-zinc-900 px-2.5 py-1.5 font-semibold text-white"
-                      placeholder="Player Name"
-                    />
+                    <div className="col-span-5 flex items-center gap-2">
+                      <span
+                        className="size-3.5 rounded-full shrink-0 border border-white/20 shadow-sm"
+                        style={{
+                          background: `linear-gradient(135deg, ${
+                            CHARACTER_CURSOR_THEMES[member.name]?.color || member.color
+                          }, ${
+                            CHARACTER_CURSOR_THEMES[member.name]?.secondaryColor ||
+                            member.secondaryColor ||
+                            member.color
+                          })`,
+                        }}
+                        title={`${member.name}'s dual aura`}
+                      />
+                      <input
+                        type="text"
+                        value={member.name}
+                        onChange={(e) => {
+                          const copy = [...roster];
+                          copy[i] = { ...member, name: e.target.value };
+                          setRoster(copy);
+                        }}
+                        onBlur={() => handleSaveRoster(roster)}
+                        className="w-full rounded-lg border border-white/10 bg-zinc-900 px-2.5 py-1.5 font-semibold text-white"
+                        placeholder="Player Name"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={member.code}
@@ -2397,8 +2487,11 @@ export default function WorksWheelDemo() {
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <div className="flex items-center gap-2.5">
                   <span
-                    className="size-3 rounded-full"
-                    style={{ backgroundColor: character.color }}
+                    className="size-3 rounded-full shadow-sm shrink-0"
+                    style={{
+                      background: `linear-gradient(135deg, ${currentCursorTheme.color}, ${currentCursorTheme.secondaryColor})`,
+                      boxShadow: `0 0 10px ${currentCursorTheme.color}`,
+                    }}
                   />
                   <div>
                     <h3 className="text-sm font-bold text-white">

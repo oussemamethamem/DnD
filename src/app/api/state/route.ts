@@ -12,6 +12,7 @@ export interface CharacterProfile {
   name: string;
   title: string;
   color: string;
+  secondaryColor?: string;
   role: "host" | "member";
 }
 
@@ -21,7 +22,8 @@ const DEFAULT_ROSTER: CharacterProfile[] = [
     code: "DeadRick",
     name: "Night",
     title: "Party Host & Creator",
-    color: "#FFC46B",
+    color: "#ffb347",
+    secondaryColor: "#78350f",
     role: "host",
   },
   {
@@ -29,7 +31,8 @@ const DEFAULT_ROSTER: CharacterProfile[] = [
     code: "Astralsea",
     name: "Constantine",
     title: "Party Guest",
-    color: "#f43f5e",
+    color: "#38bdf8",
+    secondaryColor: "#0369a1",
     role: "member",
   },
   {
@@ -37,7 +40,8 @@ const DEFAULT_ROSTER: CharacterProfile[] = [
     code: "Fred+Erica",
     name: "Fredrick(ex)",
     title: "Party Guest",
-    color: "#a855f7",
+    color: "#22c55e",
+    secondaryColor: "#051205",
     role: "member",
   },
   {
@@ -45,7 +49,8 @@ const DEFAULT_ROSTER: CharacterProfile[] = [
     code: "Tharizdun",
     name: "Chaos",
     title: "Party Guest",
-    color: "#38bdf8",
+    color: "#ff2200",
+    secondaryColor: "#7f1d1d",
     role: "member",
   },
   {
@@ -53,7 +58,8 @@ const DEFAULT_ROSTER: CharacterProfile[] = [
     code: "Baz3a",
     name: "Plasmoid",
     title: "Party Guest",
-    color: "#34d399",
+    color: "#fbbf24",
+    secondaryColor: "#34d399",
     role: "member",
   },
   {
@@ -61,7 +67,8 @@ const DEFAULT_ROSTER: CharacterProfile[] = [
     code: "EnemyCrit",
     name: "Kailos",
     title: "Party Guest",
-    color: "#fbbf24",
+    color: "#6366f1",
+    secondaryColor: "#312e81",
     role: "member",
   },
 ];
